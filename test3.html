@@ -1,0 +1,53 @@
+<!--
+    test3.html
+    Ibrahim Sardar
+--->
+
+<!DOCTYPE HTML>
+
+<html lang="en-US">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Testing Grounds *3*</title>
+    <script type="text/javascript"
+            src = "Nickel2.js">
+    </script>
+    <!-- removes favicon.ico error -->
+    <link rel="shortcut icon" href="">
+</head>
+
+<body style="text-align:center;">
+    <div id="main">
+    </div>
+</body>
+</html>
+
+<script>
+
+
+
+    // Game
+    var Game = new Viewport('main');
+    Game.set_bg_color('green');
+    Game.set_size(800,600);
+    Game.run();
+
+    // Sprite
+    FISHDATA = {img:'fish.png',w:'64',h:'64'};
+    Fish = new Sprite(Game,FISHDATA);
+    Fish.set_pos(200,150);
+    Fish.set_speed(20);
+    Fish.set_turn(45);
+    Fish.set_ang_speed(10);
+    Fish.scale(0.3);
+
+    // Game Loop
+    Nickel.update = function() {
+        Game.clear();
+        Fish.update();
+    }
+
+
+
+</script>
