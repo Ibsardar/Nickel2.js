@@ -5,4 +5,4 @@ Currently in the making.
 
 Will no longer require simpleGame.js.
 
-[Check Out the Latest Developement!](http://cs.iupui.edu/~ibsardar/lowLvlGame/HTML5,%20Js%20RTS%20Game/test3.html)
+[Check Out the Latest Developement!](http://cs.iupui.edu/~ibsardar/Nickel2/test3.html)
