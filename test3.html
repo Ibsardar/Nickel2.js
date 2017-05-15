@@ -10,8 +10,11 @@
 <head>
     <meta charset="UTF-8">
     <title>Testing Grounds *3*</title>
-    <script type="text/javascript"
-            src = "Nickel2.js">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js">
+    </script>
+    <script src = "N2Base.js">
+    </script>
+    <script src = "Nickel2.js">
     </script>
     <!-- removes favicon.ico error -->
     <link rel="shortcut icon" href="">
@@ -25,28 +28,151 @@
 
 <script>
 
-
-
     // Game
     var Game = new Viewport('main');
     Game.set_bg_color('green');
     Game.set_size(800,600);
-    Game.run();
 
     // Sprite
-    FISHDATA = {img:'fish.png',w:'64',h:'64'};
-    Fish = new Sprite(Game,FISHDATA);
-    Fish.set_pos(200,150);
-    Fish.set_speed(20);
-    Fish.set_turn(45);
-    Fish.set_ang_speed(10);
-    Fish.scale(0.3);
+    var Adata = {img:'A.png',w:32, h:32};
+    var Bdata = {img:'B.png',w:32, h:32};
+    var Cdata = {img:'C.png',w:32, h:32};
+    var Ddata = {img:'D.png',w:32, h:32};
+    var A = new Sprite(Game,Adata);
+    var B = new Sprite(Game,Bdata);
+    var C = new Sprite(Game,Cdata);
+    var D = new Sprite(Game,Ddata);
+    A.bound = function() {};
+    B.bound = function() {};
+    C.bound = function() {};
+    D.bound = function() {};
+    /*var FISHDATA = {
+        img :'fish.png',
+        w   :64,
+        h   :64
+    };
+    var Fish = new Sprite(Game,FISHDATA);
+    Fish.bound = function() {
+        // Continue
+    };*/
+    //Fish.set_pos(6,2);
+    //Fish.set_speed(0.1);
+    //Fish.set_accel(0.01);
+    //Fish.set_ang_speed(0.1);
+    //Fish.set_scale(50/64);
+
+    // Images
+    var IMG_000 = {w:50,h:50,img:'as_pics/grass001.png'};
+    var IMG_001 = {w:50,h:50,img:'as_pics/grass002.png'};
+    var IMG_002 = {w:50,h:50,img:'as_pics/grass003.png'};
+    var IMG_003 = {w:50,h:50,img:'as_pics/grass004.png'};
+    var IMG_004 = {w:3000,h:3000,img:'test2_map.png'};
+
+    // Tiles
+    var TILEDATA_00 = {scene:Game,img_data:IMG_000,types:[0]};
+    var TILEDATA_01 = {scene:Game,img_data:IMG_001,types:[1]};
+    var TILEDATA_02 = {scene:Game,img_data:IMG_002,types:[2]};
+    var TILEDATA_03 = {scene:Game,img_data:IMG_003,types:[1,3]};
+
+    // Grid Data Parts
+    var SCROLLDATA = {
+        bounds : {'top': 0, 'left': 0, 'right': 0, 'bottom': 0},
+        buffer : 35,
+        speed  : 5
+    };
+    var ROTDATA = {
+        origin : 'mouse', /* Keywords:  mouse  center  ox  oy  */
+        speed  : 1
+    };
+    var ZOOMDATA = {
+        bounds : {'in': 4, 'out': 1},
+        speed  : 1
+    };
+
+    // Grid
+    var GRIDDATA = {
+        scene               : Game,
+        matrix              : [[1,2,3,2,3,3,2,2,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,0,1,0,0,1,1,3,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,2,3,2,0,1,3,3,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,1,2,0,2,2,0,1,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,0,1,0,0,1,1,3,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,2,3,2,0,1,3,3,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,1,2,0,2,2,0,1,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,0,1,0,0,1,1,3,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,1,2,0,2,2,0,1,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,0,1,0,0,1,1,3,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,2,3,2,0,1,3,3,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,1,2,0,2,2,0,1,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,0,1,0,0,1,1,3,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,0,1,0,0,1,1,3,2,3,2,3,3,2,2,0,1,2,3,2],
+                               [0,0,1,0,0,1,1,3,2,3,2,3,3,2,2,0,1,2,3,2]],
+                              /*[[1,2,3,2],
+                               [2,1,3,1],
+                               [2,2,1,3]],*/
+        types               : { 0:TILEDATA_00,
+                                1:TILEDATA_01,
+                                2:TILEDATA_02,
+                                3:TILEDATA_03 },
+        //bg_data             : IMG_004,
+        scroll_data         : SCROLLDATA,
+        rotation_data       : ROTDATA,
+        zoom_data           : ZOOMDATA
+        /*
+        bounds_translation  : { 'top'    : 0,
+                                'left'   : 0,
+                                'right'  : 0,
+                                'bottom' : 0
+                            },
+        bounds_scaling      : { 'in'  : 4,
+                                'out' : 1
+                                }
+        */
+    };
+    var Map = new Grid(GRIDDATA);
+    //Map.translate(300,200);
+
+    /* TEST JUNK ************/
+    //Fish.offset_scale(0.5,[1,1]);
+    //Fish.offset_scale(2,[1,1]);
+    //Fish.offset_scale(4,[1,1]);
+    /************************/
 
     // Game Loop
     Nickel.update = function() {
         Game.clear();
-        Fish.update();
+        Map.update();
+        var Aco = Map.bbox.get_topleft();
+        var Bco = Map.bbox.get_topright();
+        var Cco = Map.bbox.get_bottomright();
+        var Dco = Map.bbox.get_bottomleft();
+        A.set_center(Aco[0],Aco[1]);
+        B.set_center(Bco[0],Bco[1]);
+        C.set_center(Cco[0],Cco[1]);
+        D.set_center(Dco[0],Dco[1]);
+        A.update();
+        B.update();
+        C.update();
+        D.update();
+
+        /************
+        //Fish.update();
+        //Fish.bound_around(Map.rect);
+        /*************** /
+        // test junk:
+        var rnd = Math.floor((Math.random() * 33) + 1);
+        if (rnd == 1) {
+            Map.bbox.bound_around(Map.rect);
+            //Map.rotate(15,[400,300])
+            //Fish.offset_turn(15,[400,300]);
+            //Fish.offset_scale(0.9,[400,300]);
+            //Map.scale(0.9,[400,300]);
+        }
+        /***************/
     }
+
+    // Start the game   (..by now, everything on the page will have loaded)
+    Game.run();
 
 
 
