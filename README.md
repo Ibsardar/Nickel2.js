@@ -13,21 +13,33 @@ Will no longer require simpleGame.js.
 
  - Basic Sprite engine with full transformation support
  
- - Basic Map transformation support
+ - Basic Map transformation support (translate, rotate, scale)
  
  - Tiled Map creation (no editor yet)
  
- - Bounding Box & layered collision support
+   - Basic sprite placement implemented
+   
+   - Basic accessibility of placed objects
+ 
+ - Bounding Box and other simple shapes
+ 
+ - Collision support with multiple variants and optional QuadTree optimizations
  
  - Simplified Game Loop
  
  - Viewport object supports simplifying access to the following events:
- 
+  
    - Scroll
    
    - Mouse
    
    - Keyboard
+   
+ - AI Agent Motor Capabilities with basic 2D physics
+ 
+ - Pathfinding for multiple applications (un-optimized)
+ 
+ - Simple Line-Of-Sight function (un-optimized)
    
  -----
    
@@ -39,6 +51,18 @@ Will no longer require simpleGame.js.
    
  - Grid
  
+ - SpriteSelector
+ 
+ - Locomotive
+ 
+### Static Utility Objects:
+
+ - Nickel
+ 
+ - Pathfinder
+ 
+ - Collider
+
 ### Data Structures:
 
  - Heap (min or max)
@@ -46,18 +70,42 @@ Will no longer require simpleGame.js.
  - Stack
  
  - Queue
+ 
+ - QuadTree
    
 ### Other Global Objects/Functions/Variables:
 
+ - SimplePoly
+ 
+ - SimpleEllipse
+ 
+ - SimpleLine
+ 
+ - LineSegment
+ 
+ - BoundingBox
+
  - Tile
+ 
+ - NavNode
  
  - HeapNode
  
- - TileFactory
+ - QuadTreeNode
  
- - GridFactory
+ - QuadTreeObj
  
- - Nickel (dictionary)
+ - TileBuilder
+ 
+ - NavBuilder
+ 
+ - NavNodeBuilder
+ 
+ - GridBuilder
+ 
+ - GUIBuilder
+ 
+ - LocomotiveBuilder
  
  - __main (hidden function used by Viewport)
  
