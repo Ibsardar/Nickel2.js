@@ -228,12 +228,21 @@ var Pathfinder = {
         // determine line of sight successful
         for (var i in obstructions) {
             var wall = obstructions[i];
-            if (wall.colliding(rayblock, false)) {
+            if (wall.colliding_with(rayblock, false)) {
                 return false;
             }
         }
         
         return true;
+    }
+    
+    ,
+    
+    is_in_los2          : function(host,source,target,obstructions) {
+        //--    returns true if target is in line of sight of source
+        //--
+        
+        //...
     }
     
     ,

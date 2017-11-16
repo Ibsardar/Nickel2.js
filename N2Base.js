@@ -5,7 +5,6 @@
 
     TODO:   upgrade from legacy keyCode to modern key/code
             implement debugging feature, enabled by: "Nickel.DEBUG=true;"
-            add comments to QuadTree
 */
 
 
@@ -183,7 +182,7 @@ var Nickel = {
     UTILITY   : {
         random_element : function(arr) { return arr[Math.floor(Math.random() * arr.length)]; },
         random_number : function(start,end) { return Math.floor(Math.random() * (end+1-start)) + (start); },
-        round : function(num,decimals) { return Number(Math.round(num+'e'+decimals)+'e-'+decimals); },
+        round : function(num,dec){ var round = Number(Math.round(num+'e'+dec)+'e-'+dec); return isNaN(round) ? 0 : round; },
         determine_destination : function(g, d) { return d instanceof Array ? g.map[d[0]][d[1]] : d; },
         is_array : function(o) { return o instanceof Array },
         assign_id : function() { return Nickel.ID++; },
@@ -192,7 +191,10 @@ var Nickel = {
         vector_product : function(v1,v2) { return [v1[0]*v2[0] + v1[0]*v2[1], v1[1]*v2[0] + v1[1]*v2[1]]; },
         cross_product : function(v1,v2) { return v1[0]*v2[1] - v1[1]*v2[0]; },
         dot_product : function(v1,v2) { return v1[0]*v2[0] + v1[1]*v2[1]; },
-        trim_angle : function(angle) { return angle % 360; }
+        add_vector : function(v1,v2) { return [v1[0]+v2[0], v1[1]+v2[1]]; },
+        subtract_vector : function(v1,v2) { return [v1[0]-v2[0], v1[1]-v2[1]]; },
+        trim_angle : function(angle) { return angle % 360; },
+        atan2 : function(a,b) { if (!a) a=0; if (!b) b=0; return Math.atan2(a,b); }
     },
 
     /* Main Update Function - User Should Implement This
@@ -227,81 +229,138 @@ function __main() {
 
 
 ////////////////////////////////////////////
-///   COLLIDER   ///////////////////////////
+///   DETECTOR   ///////////////////////////
 ////////////////////////////////////////////
-var Collider = {
-
-    collides_spr_spr    : function (me, you) {
-        //--    Collision detection for sprite on sprite
-        //--    via separating axis theorem for rectangles
+//
+//  Collision Detection Functions
+//
+//      * does not include convex polygon-to-convex polygon  collision *
+//      * does not include convex polygon-to-line segment  collision *
+//      * does not include convex polygon-to-point  collision *
+//
+var Collision_Detector = {
+    // TODO: CLEAN COMMENTS, PRINT STATEMENTS
+    
+    // TODO: TEST, CREATE AN OPTIMIZED VERSION (probably will be unreadable)
+    _closest_pt_on_lineseg_to_pt : function (line, pt) {
+        //--    Helper Function: returns the closest point
+        //--    on the given line segment to the given point
         //--
-
-        // this is for the list of normal angles
-        var norms = [];
-
-        // this is for the list of my corner vectors
-        var my_v_corners = [me.get_topleft(),
-                            me.get_topright(),
-                            me.get_bottomright(),
-                            me.get_bottomleft()];
-
-        // this is for the list of ur corner vectors
-        var ur_v_corners = [you.get_topleft(),
-                            you.get_topright(),
-                            you.get_bottomright(),
-                            you.get_bottomleft()];
-
-        // Normal Angles Chart:
-        // -----------------------------------
-        //  my right    0   +  me.get_rot()
-        //  my top      90  +  me.get_rot()
-        //  my left     180 +  me.get_rot()
-        //  my bottom   270 +  me.get_rot()
+        
+        // find normal dir to dir of line
+        var n = [-line.dy, line.dx];
+        
+        // dir * t + start = norm * s + pt
+        // dx * t + sx = nx * s + px
+        // dy * t + sy = ny * s + py
+        // solve: t = (nx*((dy*t+sy-py)/ny) + px - sx) / dx
+        //        ...
+        //        t = (nx*(sy - py) + ny*(px - sx)) / (ny*dx - dy*nx)
         //
-        //  ur right    0   +  you.get_rot()
-        //  ur top      90  +  you.get_rot()
-        //  ur left     180 +  you.get_rot()
-        //  ur bottom   270 +  you.get_rot()
-        // -----------------------------------
-
-        // append normal angles to list
-        norms.push.apply(norms,
-                        [me.get_rot(),         // my right
-                         you.get_rot(),        // ur right
-                         me.get_rot()  + 90,   // my top
-                         you.get_rot() + 90]); // ur top
-
+        // parameter of line: t (substitute s)
+        var t = (n[0]*(line.y - pt[1]) + n[1]*(pt[0] - line.x)) / (n[1]*line.dx - line.dy*n[0]);
+        
+        // plug t back in to obtain points
+        var nearest_x = line.dx * t + line.x;
+        var nearest_y = line.dy * t + line.y;
+        
+        // check if point is within bounds of line via
+        // parametric equations:
+        //
+        // find where point starts relative to line segment:
+        //   formula: pt = line-dir*t + line_start
+        //   where pt = [nearest_x, nearest_y]
+        //   solve:   t = (pt   - line_start)   / line_dir
+        //   x-comp:  t = (pt_x - line_start_x) / line_dir_x
+        //   y-comp:  t = (pt_y - line_start_y) / line_dir_y
+        //var t = 0;
+        if (line.dx)
+            t = (nearest_x - line.x) / line.dx;
+        else
+            t = (nearest_y - line.y) / line.dy;
+        // exceeds bounds
+        if (t > 1)
+            return line.get_end();
+        // precedes bounds
+        if (t < 0)
+            return line.get_pos();
+        // within bounds
+        return [nearest_x, nearest_y];
+    }
+    
+    ,
+    
+    // TODO: TEST, OPTIMIZE
+    collides_poly_poly  : function (me, you) {
+        //--    Polygon-polygon collision detection via
+        //--    separating axis theorem
+        //--
+        
+        // this is for the list of normal angles
+        var norms = new Map();
+        
+        // append my normal angles to list
+        for (var i=0, j=1; i<me.vertices.length; i++, j++) {
+            
+            // adjust next vertex indicator
+            if (j >= me.vertices.length)
+                j = 0;
+            
+            // calculate radian angle from vertex i to j
+            var diff = Nickel.UTILITY.subtract_vector(me.vertices[i],me.vertices[j]);
+            var theta = Nickel.UTILITY.atan2(diff[0], -diff[1]);
+            
+            // add normal angle
+            norms.set(theta, null);
+        }
+        
+        // append ur normal angles to list
+        for (var i=0, j=1; i<you.vertices.length; i++, j++) {
+            
+            // adjust next vertex indicator
+            if (j >= you.vertices.length)
+                j = 0;
+            
+            // calculate radian angle from vertex i to j
+            var diff = Nickel.UTILITY.subtract_vector(you.vertices[i],you.vertices[j]);
+            var theta = Nickel.UTILITY.atan2(diff[0], -diff[1]);
+            
+            // add normal angle
+            norms.set(theta, null);
+        }
+        
         // for each axis along a normal
-        for (var i in norms) {
-
-            // to radians
-            norms[i] *= Math.PI / 180;
+        for (var n of norms.keys()) {
 
             // get unit normal vector
-            var unit_normal_vec = [Math.cos(norms[i]), -1 * Math.sin(norms[i])];
+            var unit_normal_vec = [Math.cos(n), -1 * Math.sin(n)];
 
             // this is for the list of components (magnitude of projection)
             var my_comps = [];
             var ur_comps = [];
-
-            // 4 corners per rect
-            for (var j=0; j<4; j++) {
-
-                // prepare
-                var my_corner_vec = my_v_corners[j];
-                var ur_corner_vec = ur_v_corners[j];
-
-                // get components (scalar)
-                var my_comp = my_corner_vec[0]*unit_normal_vec[0] + my_corner_vec[1]*unit_normal_vec[1];
-                var ur_comp = ur_corner_vec[0]*unit_normal_vec[0] + ur_corner_vec[1]*unit_normal_vec[1];
-                my_comps.push(my_comp);
-                ur_comps.push(ur_comp);
+            
+            // get my components
+            for (var j in me.vertices) {
+                
+                // get component (scalar)
+                // formula: comp b onto a = a dot b / mag(a)
+                // simplified formula: comp b onto a = a dot b / 1(unit vec)
+                my_comps.push(Nickel.UTILITY.dot_product(me.vertices[j], unit_normal_vec));
+            }
+            
+            // get ur components
+            for (var j in you.vertices) {
+                
+                // get component (scalar)
+                // formula: comp b onto a = a dot b / mag(a)
+                // simplified formula: comp b onto a = a dot b / 1(unit vec)
+                ur_comps.push(Nickel.UTILITY.dot_product(you.vertices[j], unit_normal_vec));
             }
 
-            // get max/min of components for each rect
+            // get max/min of components for each polygon
             var my_extreme = [ Math.min.apply(null,my_comps), Math.max.apply(null,my_comps) ];
             var ur_extreme = [ Math.min.apply(null,ur_comps), Math.max.apply(null,ur_comps) ];
-
+            
             // check collision
             if (my_extreme[1] < ur_extreme[0] ||
                 my_extreme[0] > ur_extreme[1]) {
@@ -314,75 +373,118 @@ var Collider = {
         // collision is certain (worst case time complexity)
         return true;
     }
-
+    
     ,
-
-    collides_spr_line   : function (me, you) {
-        //--    Collision detection via separating axis
-        //--    theorem for rectangles
+    
+    // TODO: TEST, OPTIMIZE
+    collides_poly_circle : function (me, you) {
+        //--    Polygon-circle collision detection by checking closest edge
+        //--    point distance to circle center, then use a raycast to check
+        //--    if circle is wholly consumed by polygon
         //--
+        
+        // check every edge for the closest point to the
+        // circle's center until a point is collides
+        var edge = null;
+        for (var i=0, j=1; i<me.vertices.length; i++, j++) {
+            if (j>=me.vertices.length)
+                j = 0;
+            
+            edge = new LineSegment(me.vertices[i],me.vertices[j]);
+            if (Collision_Detector.collides_circle_line(you, edge)) {
+                console.log("point on edge within circle");
+                return true;
+            }
+        }
+        
+        // make a ray cast pointing right
+        var ray = new RayCast(you.get_center(), 0);
+        
+        // check how many times ray collides with poly
+        var collisions = 0;
+        for (var i=0, j=1; i<me.vertices.length; i++, j++) {
+            if (j>=me.vertices.length)
+                j = 0;
+            
+            // adapt edge to a LineSegment object
+            var edge = new LineSegment(me.vertices[i], me.vertices[j]);
+            
+            // check collision
+            if (Collision_Detector.collides_ray_line(ray, edge)) {
+                collisions++;
+            }
+        }
+        
+        // if odd number of collisions, circle is contained within poly
+        if (collisions % 2) {
+            console.log("circle within poly");
+            return true;
+        }
 
+        // collision impossible by this point (worst case time complexity)
+        return false;
+    }
+    
+    ,
+    
+    // TODO: TEST, OPTIMIZE
+    collides_poly_line  : function (me, you) {
+        //--    Polygon-line collision detection via
+        //--    separating axis theorem
+        //--
+        
         // this is for the list of normal angles
-        var norms = [];
-
-        // this is for the list of my corner vectors
-        var my_v_corners = [me.get_topleft(),
-                            me.get_topright(),
-                            me.get_bottomright(),
-                            me.get_bottomleft()];
-
-        // Normal Angles Chart:
-        // -----------------------------------
-        //  my right    0   +  me.get_rot()
-        //  my top      90  +  me.get_rot()
-        //  my left     180 +  me.get_rot()
-        //  my bottom   270 +  me.get_rot()
-        //
-        //  ur right    -90 +  you.get_rot()
-        //  my top      0   +  you.get_rot()
-        //  ur left     90  +  you.get_rot()
-        //  my bottom   180 +  you.get_rot()
-        // -----------------------------------
-
-        // append normal angles to list
-        norms.push.apply(norms,
-                        [me.get_rot(),        // my right
-                         me.get_rot() + 90],  // my top
-                         you.get_rot())       // your top
-
+        var norms = new Map();
+        
+        // append my normal angles to list
+        for (var i=0, j=1; i<me.vertices.length; i++, j++) {
+            
+            // adjust next vertex indicator
+            if (j >= me.vertices.length)
+                j = 0;
+            
+            // calculate radian angle from vertex i to j
+            var diff = Nickel.UTILITY.subtract_vector(me.vertices[i],me.vertices[j]);
+            var theta = Nickel.UTILITY.atan2(diff[0], -diff[1]);
+            
+            // add normal angle
+            norms.set(theta, null);
+        }
+        
+        // append your normal angle to list
+        var diff = Nickel.UTILITY.subtract_vector(you.get_pos(),you.get_end());
+        var theta = Nickel.UTILITY.atan2(diff[0], -diff[1]);
+        norms.set(theta, null);
+        
         // for each axis along a normal
-        for (var i in norms) {
-
-            // to radians
-            norms[i] *= Math.PI / 180;
+        for (var n of norms.keys()) {
 
             // get unit normal vector
-            var unit_normal_vec = [Math.cos(norms[i]), -1 * Math.sin(norms[i])];
+            var unit_normal_vec = [Math.cos(n), -1 * Math.sin(n)];
 
             // this is for the list of components (magnitude of projection)
             var my_comps = [];
             var ur_comps = [];
-
-            // 4 corners for rect
-            for (var j=0; j<4; j++) {
-
-                // prepare
-                var my_corner_vec = my_v_corners[j];
-
-                // get components (scalar)
-                var my_comp = my_corner_vec[0]*unit_normal_vec[0] + my_corner_vec[1]*unit_normal_vec[1];
-                my_comps.push(my_comp);
+            
+            // get my components
+            for (var j in me.vertices) {
+                
+                // get component (scalar)
+                // formula: comp b onto a = a dot b / mag(a)
+                // simplified formula: comp b onto a = a dot b / 1(unit vec)
+                my_comps.push(Nickel.UTILITY.dot_product(me.vertices[j], unit_normal_vec));
             }
+            
+            // get ur components (scalar)
+            // formula: comp b onto a = a dot b / mag(a)
+            // simplified formula: comp b onto a = a dot b / 1(unit vec)
+            ur_comps.push(Nickel.UTILITY.dot_product(you.get_pos(), unit_normal_vec));
+            ur_comps.push(Nickel.UTILITY.dot_product(you.get_end(), unit_normal_vec));
 
-            // 2 end points for line
-            // get components (scalar)
-            ur_comps.push( you.x*unit_normal_vec[0]    + you.y*unit_normal_vec[1]    );
-            ur_comps.push( you.xend*unit_normal_vec[0] + you.yend*unit_normal_vec[1] );
-
-            // get max/min of components for each rect
+            // get max/min of components for each polygon
             var my_extreme = [ Math.min.apply(null,my_comps), Math.max.apply(null,my_comps) ];
             var ur_extreme = [ Math.min.apply(null,ur_comps), Math.max.apply(null,ur_comps) ];
-
+            
             // check collision
             if (my_extreme[1] < ur_extreme[0] ||
                 my_extreme[0] > ur_extreme[1]) {
@@ -394,154 +496,232 @@ var Collider = {
 
         // collision is certain (worst case time complexity)
         return true;
+    }
+    
+    ,
+    
+    // TODO: TEST, OPTIMIZE
+    collides_poly_point : function (me, you) {
+        //--    Polygon-point collision detection via
+        //--    separating axis theorem
+        //--
+        
+        // make a ray cast pointing right (from point)
+        var ray = new RayCast(you, 0);
+        
+        // check how many times ray collides with poly
+        var collisions = 0;
+        for (var i=0, j=1; i<me.vertices.length; i++, j++) {
+            if (j>=me.vertices.length)
+                j = 0;
+            
+            // adapt edge to a LineSegment object
+            var edge = new LineSegment(me.vertices[i], me.vertices[j]);
+            
+            // check collision
+            if (Collision_Detector.collides_ray_line(ray, edge)) {
+                collisions++;
+            }
+        }
+        
+        // if odd number of collisions, point is contained within poly
+        if (collisions % 2) {
+            console.log("point within polygon");
+            return true;
+        }
 
+        // collision impossible by this point (worst case time complexity)
+        return false;
     }
 
     ,
-
-    collides_spr_point  : function (me, you) {
-        //--    Collision detection via separating axis
-        //--    theorem for rectangles
+    
+    collides_circle_circle : function (me, you) {
+        //--    Circle-circle collision detection
         //--
-
-        // this is for the list of normal angles
-        var norms = [];
-
-        // this is for the list of my corner vectors
-        var my_v_corners = [];
-
-        // get my corner vectors
-        my_v_corners.push.apply(my_v_corners,
-                               [me.get_topleft(),
-                                me.get_topright(),
-                                me.get_bottomright(),
-                                me.get_bottomleft()]);
-
-        // Normal Angles Chart:
-        // -----------------------------------
-        //  my right    0   +  this.get_rot()
-        //  my top      90  +  this.get_rot()
-        //  my left     180 +  this.get_rot()
-        //  my bottom   270 +  this.get_rot()
-        // -----------------------------------
-
-        // append normal angles to list
-        norms.push.apply(norms,
-                        [me.get_rot(),        // my right
-                         me.get_rot() + 90])  // my top
-
-        // for each axis along a normal
-        for (var i in norms) {
-
-            // to radians
-            norms[i] *= Math.PI / 180;
-
-            // get unit normal vector
-            var unit_normal_vec = [Math.cos(norms[i]), -1 * Math.sin(norms[i])];
-
-            // this is for the list of components (magnitude of projection)
-            var my_comps = [];
-
-            // 4 corners for my rect
-            for (var j=0; j<4; j++) {
-
-                // prepare
-                var my_corner_vec = my_v_corners[j];
-
-                // get components (scalar)
-                var my_comp = my_corner_vec[0]*unit_normal_vec[0] + my_corner_vec[1]*unit_normal_vec[1];
-                my_comps.push(my_comp);
-            }
-
-            // only 1 projection for the intersecting point
-            var ur_comp = you[0]*unit_normal_vec[0] + you[1]*unit_normal_vec[1];
-
-            // get max/min of components for my rect
-            var my_extreme = [ Math.min.apply(null,my_comps), Math.max.apply(null,my_comps) ];
-
-            // check collision
-            if (my_extreme[1] < ur_comp ||
-                my_extreme[0] > ur_comp) {
-
-                // gap found
-                return false;
-            }
-        }
-
-        // collision is certain (worst case time complexity)
-        return true;
+        
+        // get difference between centers
+        var diff = [me.cx - you.cx, me.cy - you.cy];
+        
+        // get distance between centers
+        var dist = Nickel.UTILITY.magnitude_of_vector(diff);
+        
+        // collision if distance between centers
+        // is less than sum of radii of me and you
+        return dist <= me.radius + you.radius ? true : false;
     }
-
+    
+    ,
+    
+    collides_circle_line : function (me, you) {
+        //--    Circle-line collision detection
+        //--
+        
+        // check if the closest point on the line to 
+        // the center of the circle is inside the circle:
+        var closest = Collision_Detector._closest_pt_on_lineseg_to_pt(you, me.get_center());
+        var distance = Nickel.UTILITY.magnitude_of_vector([closest[0]-me.cx, closest[1]-me.cy]);
+        if (distance <= me.radius) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    ,
+    
+    collides_circle_point : function (me, you) {
+        //--    Circle-point collision detection
+        //--
+        
+        // get difference between centers
+        var diff = [me.cx - you.x, me.cy - you.y];
+        
+        // get distance between centers
+        var dist = Nickel.UTILITY.magnitude_of_vector(diff);
+        
+        // collision if distance is less than radius of me
+        return dist <= me.radius ? true : false;
+    }
+    
     ,
 
     collides_line_line  : function (me, you) {
-        // reference: "https://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect"
+        //--    Line-line collision detection
+        //--    reference: "https://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect"
+        //--
+        
+        // my line's direction vector
+        var me_dir = me.get_dir();
+        
+        // your line's direction vector
+        var you_dir = you.get_dir();
+        
+        // ignore if lines have no size (mag(dir) is the size)
+        if ((!me_dir[0] && !me_dir[1])   ||
+            (!you_dir[0] && !you_dir[1])) {
+            //console.log("line-line collision warning: at least 1 vector is sizeless");
+            return false;
+        }
+        
+        // cross product of the direction vectors
+        // (magnitude doesn't matter)
+        var me_you_dir_cross = Nickel.UTILITY.round(Nickel.UTILITY.cross_product(me_dir, you_dir), 6);
 
-        // cross product of the difference vectors
-        var me_you_diff_cross = Nickel.UTILITY.cross_product(me.get_diff(), you.get_diff());
+        // if the cross is the 0 vector: (parallel)
+        if (me_you_dir_cross == 0) {
 
-        // if the cross is the 0 vector:
-        if (me_you_diff_cross == 0) {
+            // cross product of <me-start> - <you-start> and <me-dir>
+            var mid_cross = Nickel.UTILITY.round(Nickel.UTILITY.cross_product([me.x - you.x, me.y - you.y], me_dir), 6);
 
-            // cross product of start difference and my difference
-            var mid_cross = Nickel.UTILITY.cross_product([me.x - you.x, me.y - you.y], me.get_diff());
+            // if collinear:
+            if (mid_cross == 0) {
 
-            // if the formula: (my start - your start) cross my diff = 0 satisfies:
-            if ( mid_cross == 0) {
-
-                // then we are collinear:
-                // check overlap by expressing your endpoints by using my line segment's equation:
-                var my_diff_cross = Nickel.UTILITY.dot_product(me.get_diff(),me.get_diff());
-                var t0 = (you.x-me.x)*me.dx + (you.y-me.y)*me.dy;
-                t0 /= my_diff_cross;
-                var t1 = Nickel.UTILITY.dot_product(you.get_diff(),me.get_diff()) / my_diff_cross;
-                t1 += t0;
-
-                // if your line touches my line
-                if ( (t0 >= 0 && t0 <= 1) ||
-                     (t1 >= 0 && t1 <= 1) ) {
-
-                    // collinear and overlap
+                // find where me starts relative to you:
+                //   formula: <me-start> = <you-dir>*t + <you-start>
+                //
+                //   ...use only x component function to solve for t: (if NaN, then use y-component)
+                //   simplify formula: x_me_strt = x_you_dir * t + x_you_strt
+                //
+                //   ...solve for the parameter 't0' and 't1' (t1 for me-end instead of me-start):
+                //   solve: t0 = (x_me_strt - x_you_strt) / x_you_dir
+                //
+                //   ...lastly, preform a check (might be able to bail early)
+                //   if t0 is between 0 and 1, it resides within your line segment -> return true
+                //
+                var t0 = 0;
+                if (you_dir[0])
+                    t0 = (me.x - you.x) / you_dir[0];
+                else
+                    t0 = (me.y - you.y) / you_dir[1];
+                if (t0 >= 0 && t0 <= 1) {
+                    //console.log("collinear & overlap");
                     return true;
-                } else {
-
-                    // collinear and disjoint
-                    return false;
                 }
-
-            // if the formula does not satisfy:
+                
+                var t1 = 0;
+                if (you_dir[0])
+                    t1 = (me.xend - you.x) / you_dir[0];
+                else
+                    t1 = (me.yend - you.y) / you_dir[1];
+                if (t1 >= 0 && t1 <= 1) {
+                    //console.log("collinear & overlap");
+                    return true;
+                }
+                
+                // ...and vice-versa:
+                var s0 = 0;
+                if (me_dir[0])
+                    s0 = (you.x - me.x) / me_dir[0];
+                else
+                    s0 = (you.y - me.y) / me_dir[1];
+                if (s0 >= 0 && s0 <= 1) {
+                    //console.log("collinear & overlap");
+                    return true;
+                }
+                
+                var s1 = 0;
+                if (me_dir[0])
+                    s1 = (you.xend - me.x) / me_dir[0];
+                else
+                    s1 = (you.yend - me.y) / me_dir[1];
+                if (s1 >= 0 && s1 <= 1) {
+                    //console.log("collinear & overlap");
+                    return true;
+                }
+                
+                // collinear and disjoint
+                //console.log("collinear and disjoint");
+                return false;
+                
+            // if not collinear
             } else {
 
-                // we are parallel but not intersecting
+                // parallel but no intersection
+                //console.log("parallel but no intersection");
                 return false;
             }
 
-        // if we are not parallel:
+        // if not parallel:
         } else {
 
-            // solve for parameterization of line segments
+            // Solve for parameterization of my line segment vs yours:
+            //   formula:  <me_dir>*u + <me_start> = <you_dir>*v + <you_start>
+            //             {where: 1 >= u >= 0, 1 >= v >= 0}
+            //
+            //   ...simplify after some math tricks:
+            //   simplified formula: u = ((<you_start> − <me_start>) CROSS you_dir) / (you_dir CROSS me_dir)
+            //   simplified formula: v = ((<me_start> − <you_start>) CROSS me_dir) / (you_dir CROSS me_dir)
+            //
+            //  dir_cross cannot be zero because then it would mean they are parallel
+            //
+            
+            // cross product of direction vectors
+            var dir_cross = Nickel.UTILITY.cross_product(you_dir, me_dir);
+            
+            // cross product of <you-start> - <me-start> and <you-dir>
+            var mid_cross = Nickel.UTILITY.cross_product([you.x - me.x, you.y - me.y], you_dir);
 
-            // cross product of start difference and your difference
-            var mid_cross = Nickel.UTILITY.cross_product([you.x - me.x, you.y - me.y], you.get_diff())
+            // parameter for my line segment
+            var u = mid_cross / dir_cross;
 
-            // parameter for me
-            var t = mid_cross / me_you_diff_cross;
+            // cross product of <me-start> - <you-start> and <me-dir>
+            mid_cross = Nickel.UTILITY.cross_product([me.x - you.x, me.y - you.y], me_dir);
 
-            // cross product of start difference and my difference
-            mid_cross = Nickel.UTILITY.cross_product([me.x - you.x, me.y - you.y], me.get_diff());
-
-            // parameter for you
-            var u = mid_cross / Nickel.UTILITY.cross_product(you.get_diff(), me.get_diff());
+            // parameter for your line segment
+            var v = mid_cross / dir_cross;
 
             // if your line intersects my line
-            if ( (t >= 0 && t <= 1) ||
-                 (u >= 0 && u <= 1) ) {
-
+            if ((u >= -1 && u <= 0) &&
+                (v >= 0 && v <= 1)) {
+                
                 // intersection
+                //console.log("crossed (not parallel)");
                 return true;
             } else {
 
                 // no intersection
+                //console.log("not parallel & no intersection");
                 return false;
             }
         }
@@ -550,45 +730,220 @@ var Collider = {
     ,
 
     collides_line_point : function (me, you) {
-
-        // components of my start to you
-        var me_to_you_dx = you[0]-me.x;
-        var me_to_you_dy = you[1]-me.y;
-
-        // if you are along me (slopes are same)
-        if (me.dy/me.dx == me_to_you_dy/me_to_you_dx) {
-
-            // if component direction matches start
-            if (Math.sign(me.dx) == Math.sign(me_to_you_dx) &&
-                Math.sign(me.dy) == Math.sign(me_to_you_dy)) {
-
-                // if component direction matches end
-                if (Math.sign(-me.dx) == Math.sign(you[0]-me.xend) &&
-                    Math.sign(-me.dy) == Math.sign(you[1]-me.yend)) {
-
-                    // then point is intersecting the line
-                    return true;
-                }
-            }
+        //--    Line-point collision detection
+        //--
+        
+        // direction vector of line
+        var me_dir = me.get_dir();
+        
+        // direction vector of point to line start
+        var pt_to_line_start = [me.x - you[0], me.y - you[1]];
+        
+        // if cross is 0, then the 2 vectors must be parallel, and the point must be collinear
+        var cross = Nickel.UTILITY.round(Nickel.UTILITY.cross_product(me_dir, pt_to_line_start), 6);
+        if (cross == 0) {
+        
+            // find where point starts relative to line segment:
+            //   formula: <you-start> = <me-dir>*t + <me-start>
+            //   solve:   t = (<you-start> - <me-start>) / <me-dir>
+            //   x-comp:  t = (you_strt_x - me_strt_x) / me_dir_x
+            //   y-comp:  t = (you_strt_y - me_strt_y) / me_dir_y
+            var t = 0;
+            if (me_dir[0])
+                t = (you[0] - me.x) / me_dir[0];
+            else
+                t = (you[1] - me.y) / me_dir[1];
+            if (t >= 0 && t <= 1)
+                return true;
         }
 
-        // if you are my start or end
-        if ((you[0]==me.x    && you[1]==me.y   ) ||
-            (you[0]==me.xend && you[1]==me.yend))
-            return true;
-
-        // else, point is either along the line
-        //  but beyond or slopes do not match
+        // else, point is disjoint
         return false;
     }
 
     ,
+    
+    collides_ray_line   : function (me, you) {
+        //--    Ray-line collision detection
+        //--    reference: "https://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect"
+        //--
+        
+        // ray's unit direction vector
+        var me_dir = me.get_unit();
+        
+        // line's direction vector
+        var you_dir = you.get_dir();
+        
+        // cross product of the direction vectors of ray and line segment
+        // (magnitude doesn't matter)
+        var me_you_dir_cross = Nickel.UTILITY.round(Nickel.UTILITY.cross_product(me_dir, you_dir), 6);
+
+        // if the cross is the 0 vector: (parallel)
+        if (me_you_dir_cross == 0) {
+
+            // cross product of <ray-start> - <line-start> and <ray-direction>
+            var mid_cross = Nickel.UTILITY.round(Nickel.UTILITY.cross_product([me.x - you.x, me.y - you.y], me_dir), 6);
+
+            // if collinear:
+            if (mid_cross == 0) {
+
+                // find where ray starts relative to line segment:
+                //   formula: <ray-start> = <line-direction>*t + <line-start>
+                //
+                //   ...use only x component function to solve for t: (if NaN, then use y-component)
+                //   simplify formula: x_ray = x_line_dir * t + x_line_strt
+                //
+                //   ...solve for the parameter 't':
+                //   solve: t = (x_ray - x_line_strt) / x_line_dir
+                var t = 0;
+                if (you_dir[0])
+                    t = (me.x - you.x) / you_dir[0];
+                else
+                    t = (me.y - you.y) / you_dir[1];
+                
+                // Collinear and overlap if:
+                // 1)   t < 0 & pointing same directions (me_dir DOT you_dir = POSITIVE)
+                // 2)   t > 1 & pointing opposite directions (me_dir DOT you_dir = NEGATIVE)
+                // 3)   1 >= t >= 0
+                if (t >= 0 && t <= 1) {
+                    //console.log("parallel & starting within");
+                    return true;
+                } else {
+                    var same_dir = Nickel.UTILITY.dot_product(me_dir, you_dir);
+                    if (t < 0 && same_dir > 0 ||
+                        t > 1 && same_dir < 0) {
+                        //console.log("parallel & starting outside, pointing towards");
+                        return true;
+                    }
+                }
+                
+                // collinear and disjoint
+                //console.log("collinear and disjoint");
+                return false;
+                
+            // if not collinear
+            } else {
+
+                // parallel but no intersection
+                //console.log("parallel but no intersection");
+                return false;
+            }
+
+        // if not parallel:
+        } else {
+
+            // Solve for parameterization of ray vs line segment:
+            //   formula:  <ray_dir>*u + <ray_start> = <line_dir>*v + <line_start>
+            //             {where: u >= 0, 1 >= v >= 0}
+            //
+            //   ...simplify after some math tricks:
+            //   simplified formula: u = ((<line_start> − <ray_start>) CROSS line_dir) / (line_dir CROSS ray_dir)
+            //   simplified formula: v = ((<ray_start> − <line_start>) CROSS ray_dir) / (line_dir CROSS ray_dir)
+            //
+            //  dir_cross cannot be zero because then it would mean they are parallel
+            //
+            
+            // cross product of direction vectors
+            var dir_cross = Nickel.UTILITY.cross_product(you_dir, me_dir);
+            
+            // cross product of <line-start> - <ray-start> and <line-direction>
+            var mid_cross = Nickel.UTILITY.cross_product([you.x - me.x, you.y - me.y], you_dir);
+
+            // parameter for ray
+            var u = mid_cross / dir_cross;
+
+            // cross product of <ray-start> - <line-start> and <ray-direction>
+            mid_cross = Nickel.UTILITY.cross_product([me.x - you.x, me.y - you.y], me_dir);
+
+            // parameter for line
+            var v = mid_cross / dir_cross;
+
+            // if your line intersects my line
+            if (v >= 0 && v <= 1 && u <= 0) {
+                
+                // intersection
+                //console.log("crossed but not parallel");
+                return true;
+            } else {
+
+                // no intersection
+                //console.log("not parallel & no intersection");
+                return false;
+            }
+        }
+    }
+    
+    ,
+    
+    collision_ray_point : function (me, you) {
+        //--    Ray-point collision detection
+        //--
+        
+        // unit direction vector of ray
+        var me_dir = me.get_unit();
+        
+        // direction vector of point to ray start
+        var pt_to_ray_start = [me.x - you[0], me.y - you[1]];
+        
+        // if cross is 0, then the 2 vectors must be parallel, and the point must be collinear
+        var cross = Nickel.UTILITY.round(Nickel.UTILITY.cross_product(me_dir, pt_to_ray_start), 6);
+        if (cross == 0) {
+        
+            // find where point starts relative to ray unit direction-vector:
+            //   formula: <you-start> = <me-dir>*t + <me-start>
+            //   solve:   t = (<you-start> - <me-start>) / <me-dir>
+            //   x-comp:  t = (you_strt_x - me_strt_x) / me_dir_x
+            //   y-comp:  t = (you_strt_y - me_strt_y) / me_dir_y
+            var t = 0;
+            if (me_dir[0])
+                t = (you[0] - me.x) / me_dir[0];
+            else
+                t = (you[1] - me.y) / me_dir[1];
+            if (t >= 0)
+                return true;
+        }
+
+        // else, point is disjoint
+        return false;
+    }
+    
+    ,
 
     collides_point_point : function (me, you) {
+        //--    Point-point collision detection
+        //--
 
         return (me[0] == you[0] && me[1] == you[1]);
     }
 
+}
+
+
+
+////////////////////////////////////////////
+///   RESOLVER   ///////////////////////////
+////////////////////////////////////////////
+//
+//  Collision Resolution Functions
+//
+var Collision_Resolver = {
+    
+    //...TODO
+    
+}
+
+
+
+////////////////////////////////////////////
+///   AVOIDER   ////////////////////////////
+////////////////////////////////////////////
+//
+//  Collision Avoidance Functions
+//
+var Collision_Avoider = {
+    
+    //...TODO
+    
 }
 
 
@@ -702,7 +1057,7 @@ function Viewport(html_canvas_element_id) {
 
         // update pressed key value(s)
         document.onkeydown = function(ev) {
-            //console.log(ev.key);
+            //console.log("Keydown! " + ev.key);
             //function keys default action will not be ignored:
             if (ev.key != 'F1'  && ev.key != 'F2'  && ev.key != 'F3' &&
                 ev.key != 'F4'  && ev.key != 'F5'  && ev.key != 'F6' &&
@@ -716,7 +1071,7 @@ function Viewport(html_canvas_element_id) {
 
         // update released key value(s)
         document.onkeyup = function(ev) {
-            //console.log(ev.key);
+            //console.log("Keyup! " + ev.key);
             ev.preventDefault();
             self.key_downs[ev.keyCode] = false;
             self.key_upped = ev.keyCode;
@@ -727,14 +1082,14 @@ function Viewport(html_canvas_element_id) {
 
         // update pressed mouse value(s)
         self.canvas.addEventListener('mousedown',function(ev){
-            //console.log(ev.button);
+            //console.log("Mousedown! " + ev.button);
             self.mouse_downs[ev.button] = true;
             self.mouse_curr = ev.button;
         });
 
         // update released mouse value(s)
         self.canvas.addEventListener('mouseup',function(ev){
-            //console.log(ev.button);
+            //console.log("Mouseup! " + ev.button);
             self.mouse_downs[ev.button] = false;
             self.mouse_upped = ev.button;
             if (ev.button == self.mouse_curr) {
@@ -886,7 +1241,7 @@ function Viewport(html_canvas_element_id) {
 ////////////////////////////////////////////
 ///   SIMPLE POLY   ////////////////////////
 ////////////////////////////////////////////
-function SimplePoly(scene, vertices) {
+function SimplePoly(scene, vertices, is_equiangular=false) {
 
     // general
     this.id = Nickel.UTILITY.assign_id();
@@ -912,6 +1267,7 @@ function SimplePoly(scene, vertices) {
     // other
     this.dead = false;
     this.visibility = true;
+    this.equiangular = is_equiangular;
 
     this.update = function() {
         //--    Called every frame.
@@ -1003,6 +1359,97 @@ function SimplePoly(scene, vertices) {
         //--
 
     }
+    
+    this.get_center = function() {
+        //--    Returns average vertex position
+        //--
+        
+        var avg = [0,0];
+        for(var i in this.vertices) {
+            avg[0] += this.vertices[i][0];
+            avg[1] += this.vertices[i][1];
+        }
+        avg[0] /= this.vertices.length;
+        avg[1] /= this.vertices.length;
+        return avg;
+    }
+    
+    this.set_center = function(new_center) {
+        //--    Centers self onto a position (expensive)
+        //--
+        
+        var center = this.get_center();
+        this.shift_pos(new_center[0]-center[0], new_center[1]-center[1]);
+    }
+    
+    this.shift_pos = function(shiftx, shifty) {
+        //--    Shifts all vertices in the x and y dircections
+        //--
+        
+        for (var i in this.vertices) {
+            this.vertices[i][0] += shiftx;
+            this.vertices[i][1] += shifty;
+        }
+        
+        this.x = this.vertices[0][0];
+        this.y = this.vertices[0][1];
+    }
+    
+    // TODO: TEST
+    this.set_pos = function(point) {
+        //--    Translates self where 1st vertex
+        //--    is at the given point
+        //--
+        
+        var diff = [point[0] - this.x, point[1] - this.y];
+        
+        for (var i in this.vertices) {
+            this.vertices[i][0] += diff[0];
+            this.vertices[i][1] += diff[1];
+        }
+        
+        this.x = point[0];
+        this.y = point[1];
+    }
+    
+    this.scale_around = function(scale, point) {
+        //--    Scales x,y position of vertices from/to a point
+        //--
+        
+        this.scale_around2(scale, scale, point);
+    }
+    
+    this.scale_around2 = function(scalex, scaley, point) {
+        //--    Scales x,y position of vertices from/to a point
+        //--
+        
+        for (var i in this.vertices) {
+            this.vertices[i][0] = scalex * (this.vertices[i][0] - point[0]) + point[0];
+            this.vertices[i][1] = scaley * (this.vertices[i][1] - point[1]) + point[1];
+        }
+        
+        this.x = this.vertices[0][0];
+        this.y = this.vertices[0][1];
+    }
+    
+    this.rotate_around = function(degrees, point) {
+        //--    Applies a rotation transformation to all
+        //--    vertices of the polygon
+        //--
+        
+        var radians = degrees*Math.PI/180*-1;
+        
+        for (i in this.vertices) {
+            
+            var tmpx = this.vertices[i][0] - point[0];
+            var tmpy = this.vertices[i][1] - point[1];
+            this.vertices[i][0] = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
+            this.vertices[i][1] = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
+        }
+        
+        this.x = this.vertices[0][0];
+        this.y = this.vertices[0][1];
+    }
 }//end SimplePoly
 
 
@@ -1033,6 +1480,202 @@ function SimpleEllipse(scene, radius_h, radius_v) {
     // pos (initially hide the ellipse)
     this.cx = -radius_h;
     this.cy = -radius_v;
+    
+    // rot (always in radians)
+    this.rot = 0;
+
+    // other
+    this.dead = false;
+    this.visibility = true;
+
+    this.update = function() {
+        //--    Called every frame.
+        //--    Updates changing parameters.
+        //--
+
+        // skip if marked for deletion
+        if (this.dead == true) {
+            return;
+        }
+
+        // user custom update
+        this.update_more();
+
+        // render graphics
+        this.draw();
+    }
+
+    this.draw = function() {
+        //--    Called every frame. Processes graphics
+        //--    based on current parameters.
+        //--
+
+        // skip if marked for invisibility
+        if (this.visibility == false || this.dead == true) {
+            return;
+        }
+
+        // skip if no stroke color
+        if (!this.stroke_color) {
+            return;
+        }
+
+        // draw
+        var ctx = this.context;
+        ctx.save();
+
+        // stroke properties
+        ctx.lineWidth = this.stroke_width;
+        ctx.setLineDash([this.stroke_dash_length, this.stroke_gap_length]);
+        ctx.fillStyle = this.stroke_fill;
+        ctx.strokeStyle = this.stroke_color;
+        
+        // draw ellipse
+        ctx.beginPath();
+        // (params: cx,cy,rad_h,rad_v,rot,strt_angle,end_angle,anticlockwise)
+        ctx.ellipse( this.cx,this.cy,this.radius_h,this.radius_v,-1*this.rot,0,2*Math.PI );
+        ctx.stroke();
+        if (this.stroke_fill)
+            ctx.fill();
+
+        ctx.restore();
+    }
+
+    this.destroy = function() {
+        //--    Marks current instance for deletion
+        //--
+
+        this.dead = true;
+        this.visibility = false;
+    }
+
+    this.hide = function() {
+        //--    Marks current instance's visibility to hidden
+        //--
+
+        this.visibility = false;
+    }
+
+    this.show = function() {
+        //--    Marks current instance's visibility to shown
+        //--
+
+        this.visibility = true;
+    }
+
+    this.is_visible = function() {
+        //--    Returns if self is visible
+        //--
+
+        return this.visibility;
+    }
+
+    this.update_more = function() {
+        //--    Called in update. Meant to be over-ridden.
+        //--
+
+    }
+    
+    this.set_angle = function(degrees) {
+        //--    Sets the rotation angle from degrees
+        //--
+        
+        this.rot = degrees / 180 * Math.PI;
+    }
+    
+    this.get_center = function() {
+        //--    Returns center of ellipse
+        //--
+        
+        return [this.cx, this.cy];
+    }
+    
+    this.set_center = function(new_center) {
+        //--    Centers self onto a position
+        //--
+        
+        this.cx = new_center[0];
+        this.cy = new_center[1];
+    }
+    
+    this.shift_pos = function(shiftx, shifty) {
+        //--    Shifts center position
+        //--
+        
+        this.cx += shiftx;
+        this.cy += shifty;
+    }
+    
+    this.set_pos = function(point) {
+        //--    Translates self where center point
+        //--    is at the given point (proxy to 'set_center')
+        //--
+        
+        this.cx = point[0];
+        this.cy = point[1];
+    }
+    
+    this.scale_around = function(scale, point) {
+        //--    Scales x,y center position and h,v radius
+        //--    of self from/to a point
+        //--
+        
+        this.scale_around2(scale, scale, scale, scale, point);
+    }
+    
+    this.scale_around2 = function(scalex, scaley, scalerh, scalerv, point) {
+        //--    Scales x,y center position and h,v radius
+        //--    of self from/to a point
+        //--
+        
+        this.cx = scalex * (this.cx - point[0]) + point[0];
+        this.cy = scaley * (this.cy - point[1]) + point[1];
+        this.radius_h *= scalerh;
+        this.radius_v *= scalerv;
+    }
+    
+    this.rotate_around = function(degrees, point) {
+        //--    Applies a rotation transformation to centerpoint
+        //--
+        
+        var radians = degrees*Math.PI/180;
+            
+        var tmpx = this.cx - point[0];
+        var tmpy = this.cy - point[1];
+        this.cx = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
+        this.cy = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
+        
+        this.rot += radians;
+    }
+}//end SimpleEllipse
+
+
+
+////////////////////////////////////////////
+///   SIMPLE CIRCLE   //////////////////////
+////////////////////////////////////////////
+function SimpleCircle(scene, radius) {
+
+    // general
+    this.id = Nickel.UTILITY.assign_id();
+    this.type = 'SimpleCircle';
+    this.scene = scene;
+    this.canvas = scene.canvas;
+    this.context = this.canvas.getContext("2d");
+
+    // style
+    this.stroke_width = 1;
+    this.stroke_dash_length = 0;
+    this.stroke_gap_length = 0;
+    this.stroke_fill = null;
+    this.stroke_color = null;
+
+    // size
+    this.radius = radius;
+
+    // pos (initially hide the circle)
+    this.cx = -radius;
+    this.cy = -radius;
 
     // other
     this.dead = false;
@@ -1080,10 +1723,10 @@ function SimpleEllipse(scene, radius_h, radius_v) {
         ctx.fillStyle = this.stroke_fill;
         ctx.strokeStyle = this.stroke_color;
 
-        // draw ellipse
+        // draw circle
         ctx.beginPath();
-        // (params: cx,cy,rad_h,rad_v,rot,strt_angle,end_angle,anticlockwise)
-        ctx.ellipse( this.cx,this.cy,this.radius_h,this.radius_v,0,0,2*Math.PI );
+        // (params: cx, cy, radius, start_angle, end_angle, anticlockwise?)
+        ctx.arc(this.cx,this.cy,this.radius,0,2*Math.PI,false);
         ctx.stroke();
         if (this.stroke_fill)
             ctx.fill();
@@ -1125,7 +1768,69 @@ function SimpleEllipse(scene, radius_h, radius_v) {
         //--
 
     }
-}//end SimpleEllipse
+    
+    this.get_center = function() {
+        //--    Returns center of circle
+        //--
+        
+        return [this.cx, this.cy];
+    }
+    
+    this.set_center = function(new_center) {
+        //--    Centers self onto a position
+        //--
+        
+        this.cx = new_center[0];
+        this.cy = new_center[1];
+    }
+    
+    this.shift_pos = function(shiftx, shifty) {
+        //--    Shifts center position
+        //--
+        
+        this.cx += shiftx;
+        this.cy += shifty;
+    }
+    
+    this.set_pos = function(point) {
+        //--    Translates self where center point
+        //--    is at the given point (proxy to 'set_center')
+        //--
+        
+        this.cx = point[0];
+        this.cy = point[1];
+    }
+    
+    this.scale_around = function(scale, point) {
+        //--    Scales x,y center position and radius
+        //--    of self from/to a point
+        //--
+        
+        this.scale_around2(scale, scale, scale, point);
+    }
+    
+    this.scale_around2 = function(scalex, scaley, scaler, point) {
+        //--    Scales x,y center position and radius
+        //--    of self from/to a point
+        //--
+        
+        this.cx = scalex * (this.cx - point[0]) + point[0];
+        this.cy = scaley * (this.cy - point[1]) + point[1];
+        this.radius *= scaler;
+    }
+    
+    this.rotate_around = function(degrees, point) {
+        //--    Applies a rotation transformation to centerpoint
+        //--
+        
+        var radians = degrees*Math.PI/180*-1;
+            
+        var tmpx = this.cx - point[0];
+        var tmpy = this.cy - point[1];
+        this.cx = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
+        this.cy = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
+    }
+}//end SimpleCircle
 
 
 
@@ -1152,6 +1857,10 @@ function SimpleLine(scene, startpoint, endpoint) {
     this.y = startpoint[1];
     this.xend = endpoint[0];
     this.yend = endpoint[1];
+
+    // dir
+    this.dx = this.xend - this.x;
+    this.dy = this.yend - this.y;
 
     // other
     this.dead = false;
@@ -1241,6 +1950,137 @@ function SimpleLine(scene, startpoint, endpoint) {
         //--
 
     }
+
+    this.get_pos = function() {
+        //--    returns the start position
+        //--
+
+        return [this.x, this.y];
+    }
+
+    this.get_end = function() {
+        //--    returns the end position
+        //--
+
+        return [this.xend, this.yend];
+    }
+
+    this.get_dir = function() {
+        //--    returns the direction vector from start
+        //--
+
+        return [this.dx, this.dy];
+    }
+
+    this.get_rot = function() {
+        //--    Returns angle (in radians) from start to end
+        //--
+
+        return Nickel.UTILITY.atan2(-this.dy, this.dx);
+    }
+    
+    this.get_center = function() {
+        //--    Returns midpoint of linesegment
+        //--
+        
+        return [this.x + this.dx/2, this.y + this.dy/2];
+        //return [this.x+(this.xend-this.x)/2, this.y+(this.yend-this.y)/2];
+    }
+
+    this.set_pos = function(startpoint) {
+        //--    Sets the start point, ultimately changing the
+        //--    direction vector
+        //--
+
+        this.x = startpoint[0];
+        this.y = startpoint[1];
+        this.dx = this.xend - this.x;
+        this.dy = this.yend - this.y;
+    }
+
+    this.set_end = function(endpoint) {
+        //--    Sets the end point, ultimately changing the
+        //--    direction vector
+        //--
+
+        this.xend = endpoint[0];
+        this.yend = endpoint[1];
+        this.dx = this.xend - this.x;
+        this.dy = this.yend - this.y;
+    }
+
+    this.set_dir = function(dir) {
+        //--    Sets the direction vector from start,
+        //--    ultimately changing the end point
+        //--
+
+        this.dx = dir[0];
+        this.dy = dir[1];
+        this.xend = this.x + dir[0];
+        this.yend = this.y + dir[1];
+    }
+    
+    this.set_center = function(new_center) {
+        //--    Centers midpoint onto a position (expensive)
+        //--
+        
+        var center = this.get_center();
+        var difx = new_center[0] - center[0];
+        var dify = new_center[1] - center[1];
+        
+        this.shift_pos(difx, dify);
+    }
+    
+    this.shift_pos = function(shiftx, shifty) {
+        //--    Shifts endpoints
+        //--
+        
+        this.x += shiftx;
+        this.y += shifty;
+        this.xend += shiftx;
+        this.yend += shifty;
+        
+        this.dx = this.xend - this.x;
+        this.dy = this.yend - this.y;
+    }
+    
+    this.scale_around = function(scale, point) {
+        //--    Scales self's endpoints around a point
+        //--
+        
+        this.scale_around(scale, scale, point);
+    }
+    
+    this.scale_around2 = function(scalex, scaley, point) {
+        //--    Scales self's endpoints around a point
+        //--
+        
+        this.x = scalex * (this.x - point[0]) + point[0];
+        this.y = scaley * (this.y - point[1]) + point[1];
+        this.xend = scalex * (this.xend - point[0]) + point[0];
+        this.yend = scaley * (this.yend - point[1]) + point[1];
+    }
+    
+    this.rotate_around = function(degrees, point) {
+        //--    Applies a rotation transformation to both endpoints
+        //--
+        
+        var radians = degrees*Math.PI/180*-1;
+        var tmpx, tmpy;
+            
+        tmpx = this.x - point[0];
+        tmpy = this.y - point[1];
+        this.x = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
+        this.y = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
+        
+        tmpx = this.xend - point[0];
+        tmpy = this.yend - point[1];
+        this.xend = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
+        this.yend = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
+        
+        this.dx = this.xend - this.x;
+        this.dy = this.yend - this.y;
+    }
 }//end SimpleLine
 
 
@@ -1277,8 +2117,8 @@ function LineSegment(startpoint, endpoint=[0,0]) {
         return [this.xend, this.yend];
     }
 
-    this.get_diff = function() {
-        //--    returns the difference vector from start position
+    this.get_dir = function() {
+        //--    returns the direction vector from start
         //--
 
         return [this.dx, this.dy];
@@ -1291,20 +2131,20 @@ function LineSegment(startpoint, endpoint=[0,0]) {
         return Math.atan2(-this.dy, this.dx);
     }
 
-    this.set_diff = function(diff) {
-        //--    Sets the difference of the start and end points,
+    this.set_dir = function(dir) {
+        //--    Sets the direction vector from start,
         //--    ultimately changing the end point
         //--
 
-        this.dx = diff[0];
-        this.dy = diff[1];
-        this.xend = this.x + diff[0];
-        this.yend = this.y + diff[1];
+        this.dx = dir[0];
+        this.dy = dir[1];
+        this.xend = this.x + dir[0];
+        this.yend = this.y + dir[1];
     }
 
     this.set_end = function(endpoint) {
         //--    Sets the end point, ultimately changing the
-        //--    difference vector
+        //--    direction vector
         //--
 
         this.dx = endpoint[0] - this.x;
@@ -1314,6 +2154,46 @@ function LineSegment(startpoint, endpoint=[0,0]) {
 
     }
 }//end LineSegment
+
+
+
+////////////////////////////////////////////
+///   RAY CAST   ///////////////////////////
+////////////////////////////////////////////
+function RayCast(startpoint, direction_degs) {
+
+    // general
+    this.id = Nickel.UTILITY.assign_id();
+    this.type = 'RayCast';
+
+    // pos
+    this.x = startpoint[0];
+    this.y = startpoint[1];
+
+    // dir (convert to radians)
+    this.rot = direction_degs / 180 * Math.PI;
+
+    this.get_pos = function() {
+        //--    Returns the start position
+        //--
+
+        return [this.x, this.y];
+    }
+    
+    this.set_angle = function(degrees) {
+        //--    Sets the rotation angle from degrees
+        //--
+        
+        this.rot = direction_degs / 180 * Math.PI;
+    }
+    
+    this.get_unit = function() {
+        //--    Returns a unit direction vector
+        //--
+        
+        return [Math.cos(this.rot), Math.sin(this.rot) * -1];
+    }
+}//end RayCast
 
 
 
@@ -1411,6 +2291,175 @@ function BoundingBox(sprite) {
 
 
 ////////////////////////////////////////////
+///   COLLIDER HULL   //////////////////////
+////////////////////////////////////////////
+function ColliderHull(sprite) {
+    
+    // TODO: TEST EXTENSIVELY
+    // (this, simple shapes, and some collision_detection functions)
+    
+    // *REDO*
+    // redo optimizations on simple poly objects with equiangular flags
+    
+    // general
+    this.id = Nickel.UTILITY.assign_id();
+    this.type = 'ColliderHull';
+    
+    // parent/host sprite
+    this.parent = sprite;
+    
+    // simple shape of hull
+    this.shape = null;
+    
+    // origin relative to sprite's origin
+    // Ex: 0,0 would mean this hull will rotate around sprite's origin on update
+    this.origin = [0,0];
+    
+    // this limits the update function to be called once per frame
+    this.updated = false;
+    
+    this.update = function() {
+        //--    Main update function (called every frame)
+        //--
+        
+        // indicate that the parent sprite and
+        // hull are now out of sync
+        this.updated = false;
+    }
+    
+    this.update_transformations = function() {
+        //--    Updates the hull's shape based on its parent
+        //--    sprite's position, rotation, and horizontal scale
+        //--    (not called every frame)
+        //--
+        
+        // only update tranformations if they have not been
+        // updated this frame already:
+        if (!this.updated) {
+            this.updated = true;
+            var par_pos = this.parent.get_pos2();
+            var hul_pos = [par_pos[0]+this.origin[0], par_pos[1]+this.origin[1]];
+            this.shape.set_pos(hul_pos[0], hul_pos[1]);
+            this.shape.rotate_around(this.parent.get_rot(), hul_pos);
+            this.shape.scale_around(this.parent.get_scalex(), hul_pos);
+        }
+    }
+    
+    this.set_shape = function(simple_shape) {
+        //--    Sets the shape of the hull
+        //--
+        
+        this.shape = simple_shape;
+        this.update_transformations();
+    }
+    
+    this.detect_collision = function(obj) {
+        //--    Returns if a collision was detected
+        //--    with some object
+        //--
+        
+        // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
+        
+        // first, make sure hull is up to date with parent sprite
+        this.update_transformations();
+        
+        // me = circle
+        if (this.shape.type == "SimpleCircle") {
+        
+            // you = point
+            if (Nickel.UTILITY.is_array(obj)) {
+             
+                return Collision_Detector.collides_circle_point(this.shape, obj);
+                
+            // you = hull
+            } else if (obj.type == "ColliderHull") {
+                
+                // you = circle hull
+                if (obj.shape == "SimpleCircle") {
+                    
+                    return Collision_Detector.collides_circle_circle(this.shape, obj.shape);
+                
+                // you = poly hull
+                } else if (obj.shape == "SimplePoly") {
+                
+                    return Collision_Detector.collides_poly_circle(obj.shape, this.shape);
+                }
+                
+            // you = poly
+            } else if (obj.type == "SimplePoly") {
+
+                return Collision_Detector.collides_poly_circle(obj, this.shape);
+                
+            // you = circle
+            } else if (obj.type == "SimpleCircle") {
+                
+                return Collision_Detector.collides_circle_circle(obj, this.shape);
+                
+            // you = line
+            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
+                
+                return Collision_Detector.collides_circle_line(this.shape, obj);
+                
+            // you = unknown
+            } else {
+                
+                return false;
+            }
+                
+        // me = poly
+        } else if (this.shape.type == "SimplePoly") {
+        
+            // you = point
+            if (Nickel.UTILITY.is_array(obj)) {
+             
+                return Collision_Detector.collides_poly_point(this.shape, obj);
+                
+            // you = hull
+            } else if (obj.type == "ColliderHull") {
+                
+                // you = circle hull
+                if (obj.shape == "SimpleCircle") {
+                    
+                    return Collision_Detector.collides_poly_circle(this.shape, obj.shape);
+                
+                // you = poly hull
+                } else if (obj.shape == "SimplePoly") {
+                
+                    return Collision_Detector.collides_poly_poly(obj.shape, this.shape);
+                }
+                
+            // you = poly
+            } else if (obj.type == "SimplePoly") {
+
+                return Collision_Detector.collides_poly_poly(this.shape, obj);
+                
+            // you = circle
+            } else if (obj.type == "SimpleCircle") {
+                
+                return Collision_Detector.collides_poly_circle(this.shape, obj);
+                
+            // you = line
+            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
+                
+                return Collision_Detector.collides_poly_line(this.shape, obj);
+                
+            // you = unknown
+            } else {
+                
+                return false;
+            }
+        
+        // me = unknown
+        } else {
+            
+            return false;
+        }
+    }
+}
+
+
+
+////////////////////////////////////////////
 ///   SPRITE   /////////////////////////////
 ////////////////////////////////////////////
 function Sprite(scene, image_data, has_bbox=true) {
@@ -1440,6 +2489,9 @@ function Sprite(scene, image_data, has_bbox=true) {
     if (has_bbox) {
         this.bbox = new BoundingBox(this);
     }
+    
+    // default collision hull
+    this.hull = new ColliderHull(this);
 
     // size
     this.width = image_data.w;
@@ -2262,7 +3314,7 @@ function Sprite(scene, image_data, has_bbox=true) {
 
 
     // +++
-    // +++ > force-related:
+    // +++ > force-related:     TODO: REMOVE THESE CAREFULLY
 
     this.set_force = function(index, force) {
         //--    Sets a specific force
@@ -2387,6 +3439,13 @@ function Sprite(scene, image_data, has_bbox=true) {
 
         this.type = type;
     }
+    
+    this.set_hull = function(hull) {
+        //--    Resets the collision hull for the sprite
+        //--
+        
+        this.hull = hull;
+    }
 
 
     // --
@@ -2400,34 +3459,27 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    with self (and in same layer if specified)
         //--
 
-        // if target is a point
-        if (Nickel.UTILITY.is_array(target)) {
-
-            // collision check
-            return Collider.collides_spr_point(this, target);
-        }
-
-        // if target is a sprite
-        else if (target.type == 'Sprite') {
-
-            // layer check
-            if (layer_check && this.get_layer() == target.get_layer() ||
-                !layer_check) {
-
-                // collision check
-                return Collider.collides_spr_spr(this, target);
+        // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
+        
+        // if sprite, check layer if specified, then check their hulls
+        if (target.type == "Sprite") {
+            if (!layer_check) {
+                
+                // no layer check
+                return this.hull.colliding_with(target.hull);
+            } else if (layer_check && (target.get_layer() == this.get_layer())) {
+                
+                // same layer
+                return this.hull.colliding_with(target.hull);
+            } else {
+                
+                // different layer
+                return false;
             }
         }
-
-        // if target is a line segment
-        else if (target.type == 'LineSegment') {
-
-            // collision check
-            return Collider.collides_spr_line(this, target);
-        }
-
-        // if target is some unexpected object, default to no collision
-        return false;
+        
+        // target is not a sprite
+        return this.hull.colliding_with(target);
     }
 
     this.copy_base = function() {
@@ -3576,6 +4628,7 @@ function QuadTreeObj(obj,overlap,bounds) {
     this.entity = obj;
 
     // actual bounds of the collision object
+    // format: {x:_,y:_,w:_,h:_}
     this.bounds = bounds;
 
     // indicates if overlapping onto one or
@@ -3595,6 +4648,7 @@ function QuadTreeNode() {
     this.children = [];
 
     // bounds of the cell this node represents
+    // format: {x:_,y:_,w:_,h:_}
     this.bounds = null;
 
     // indicates how deep into the quadtree this node is
