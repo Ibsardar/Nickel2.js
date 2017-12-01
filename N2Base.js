@@ -232,7 +232,7 @@ function __main() {
 ///   DETECTOR   ///////////////////////////
 ////////////////////////////////////////////
 //
-//  Collision Detection Functions
+//  Collision Detection Functions (also includes resolution in some cases)
 //
 //      * does not include convex polygon-to-convex polygon  collision *
 //      * does not include convex polygon-to-line segment  collision *
@@ -241,7 +241,6 @@ function __main() {
 var Collision_Detector = {
     // TODO: CLEAN COMMENTS, PRINT STATEMENTS
     
-    // TODO: TEST, CREATE AN OPTIMIZED VERSION (probably will be unreadable)
     _closest_pt_on_lineseg_to_pt : function (line, pt) {
         //--    Helper Function: returns the closest point
         //--    on the given line segment to the given point
@@ -273,11 +272,7 @@ var Collision_Detector = {
         //   solve:   t = (pt   - line_start)   / line_dir
         //   x-comp:  t = (pt_x - line_start_x) / line_dir_x
         //   y-comp:  t = (pt_y - line_start_y) / line_dir_y
-        //var t = 0;
-        if (line.dx)
-            t = (nearest_x - line.x) / line.dx;
-        else
-            t = (nearest_y - line.y) / line.dy;
+        //
         // exceeds bounds
         if (t > 1)
             return line.get_end();
@@ -290,17 +285,49 @@ var Collision_Detector = {
     
     ,
     
-    // TODO: TEST, OPTIMIZE
-    collides_poly_poly  : function (me, you) {
+    collides_poly_poly  : function (me, you, resolve_me=false, resolve_you=false,
+                                    my_heaviness=1, your_heaviness=1,
+                                    my_velocity=null, your_velocity=null) {
         //--    Polygon-polygon collision detection via
-        //--    separating axis theorem
+        //--    separating axis theorem. Can also resolve
+        //--    me or you completely or both of us
+        //--    partially. Heaviness will determine how
+        //--    much fast each poly moves. If resolution
+        //--    is desired, return value will be a pair
+        //--    of push vectors for both polys.
         //--
+        
+        // begin by temporarily shifting us by our velocities
+        // (function makes this easier to use later)
+        var velocity_shift = function(dir=1) {
+            if (my_velocity)
+                me.shift_pos(my_velocity[0] * dir, my_velocity[1] * dir);
+            if (your_velocity)
+                you.shift_pos(your_velocity[0] * dir, your_velocity[1] * dir);
+        }
+        velocity_shift();
+        
+        // this is for finding the minimum interval
+        // distance along some normal in the case
+        // of collision resolution:
+        var min_interval = 99999999;
+        
+        // this is for finding the the axis in which
+        // the minimum interval distance is found in
+        // the case of collision resolution:
+        var min_interval_axis = [0,0];
         
         // this is for the list of normal angles
         var norms = new Map();
         
+        // (append only half of my normal angles if I'm
+        //  equiangular and have even amount of vertices)
+        var len = me.vertices.length;
+        if (me.equiangular && !(me.vertices.length % 2))
+            len /= 2;
+        
         // append my normal angles to list
-        for (var i=0, j=1; i<me.vertices.length; i++, j++) {
+        for (var i=0, j=1; i<len; i++, j++) {
             
             // adjust next vertex indicator
             if (j >= me.vertices.length)
@@ -314,8 +341,14 @@ var Collision_Detector = {
             norms.set(theta, null);
         }
         
+        // (append only half of your normal angles if you're
+        //  equiangular and have even amount of vertices)
+        len = you.vertices.length;
+        if (you.equiangular && !(you.vertices.length % 2))
+            len /= 2;
+        
         // append ur normal angles to list
-        for (var i=0, j=1; i<you.vertices.length; i++, j++) {
+        for (var i=0, j=1; i<len; i++, j++) {
             
             // adjust next vertex indicator
             if (j >= you.vertices.length)
@@ -364,11 +397,90 @@ var Collision_Detector = {
             // check collision
             if (my_extreme[1] < ur_extreme[0] ||
                 my_extreme[0] > ur_extreme[1]) {
+            
+                // shift back
+                velocity_shift(-1);
 
                 // gap found
                 return false;
             }
+            
+            // COLLISION RESOLUTION
+            if (resolve_me || resolve_you) {
+                
+                // get distance of collision interval on this axis
+                var this_interval = Math.abs(my_extreme[0] - ur_extreme[1]);
+                if (my_extreme[0] < ur_extreme[0]) {
+                    this_interval = Math.abs(ur_extreme[0] - my_extreme[1]);
+                }
+                
+                // record smallest interval yet
+                if (this_interval < min_interval) {
+                    min_interval = this_interval;
+                    min_interval_axis[0] = unit_normal_vec[0];
+                    min_interval_axis[1] = unit_normal_vec[1];
+                    
+                    // flip direction if general direction
+                    // is other way from poly's center:
+                    var center_diff = Nickel.UTILITY.subtract_vector(me.get_center(), you.get_center());
+                    if (Nickel.UTILITY.dot_product(center_diff, min_interval_axis) < 0) {
+                        min_interval_axis[0] = -min_interval_axis[0];
+                        min_interval_axis[1] = -min_interval_axis[1];
+                    }
+                }
+            }
         }
+        
+        // COLLISION RESOLUTION
+        if (resolve_me || resolve_you) {
+            
+            // The minimum translation vector from you to me;
+            // used to push polygons appart.
+            var min_translation_vec = [min_interval_axis[0]*min_interval,
+                                       min_interval_axis[1]*min_interval];
+            
+            // shift back
+            velocity_shift(-1);
+            
+            // resolve me
+            if (resolve_me && !resolve_you) {
+                me.shift_pos(min_translation_vec[0], min_translation_vec[1]);
+                
+                // return a pair of push vectors for me and you
+                return [min_translation_vec, [0,0]];
+
+            // resolve you
+            } else if (!resolve_me && resolve_you) {
+                you.shift_pos(min_translation_vec[0] * -1, min_translation_vec[1] * -1);
+                
+                // return a pair of push vectors for me and you
+                return [[0,0],min_translation_vec];
+
+            // resolve both partially
+            } else if (resolve_me && resolve_you) {
+                
+                // calculate heavyness percentage
+                my_heaviness = my_heaviness / (my_heaviness + your_heaviness);
+                your_heaviness = 1 - my_heaviness;
+                
+                // calculate how much me and you should be pushed away
+                // (so smaller vector means heavier polygon and vice versa)
+                var my_resolve   = [min_translation_vec[0] * your_heaviness,
+                                    min_translation_vec[1] * your_heaviness];
+                var your_resolve = [min_translation_vec[0] * my_heaviness * -1,
+                                    min_translation_vec[1] * my_heaviness * -1];
+
+                // push both of us
+                me.shift_pos(my_resolve[0], my_resolve[1]);
+                you.shift_pos(your_resolve[0], your_resolve[1]);
+                
+                // return a pair of push vectors for me and you
+                return [my_resolve, your_resolve];
+            }
+        }
+            
+        // shift back
+        velocity_shift(-1);
 
         // collision is certain (worst case time complexity)
         return true;
@@ -376,50 +488,144 @@ var Collision_Detector = {
     
     ,
     
-    // TODO: TEST, OPTIMIZE
-    collides_poly_circle : function (me, you) {
+    collides_poly_circle : function (me, you, resolve_me=false, resolve_you=false,
+                                     my_heaviness=1, your_heaviness=1,
+                                     my_velocity=null, your_velocity=null) {
         //--    Polygon-circle collision detection by checking closest edge
         //--    point distance to circle center, then use a raycast to check
-        //--    if circle is wholly consumed by polygon
+        //--    if circle is wholly consumed by polygon (center consumed for resolution).
         //--
         
+        // begin by temporarily shifting us by our velocities
+        // (function makes this easier to use later)
+        var velocity_shift = function(dir=1) {
+            if (my_velocity)
+                me.shift_pos(my_velocity[0] * dir, my_velocity[1] * dir);
+            if (your_velocity)
+                you.shift_pos(your_velocity[0] * dir, your_velocity[1] * dir);
+        }
+        velocity_shift();
+        
+        // push vector from circle's center to mine
+        var min_translation_vec = null;
+        
+        // min distance from circle to poly
+        var min_distance = 999999;
+        
+        // closest point on polygon edges to circle's center
+        var closest = null;
+        
+        // is circle's center within the poly?
+        var within = Collision_Detector.collides_poly_point(me, you.get_center());
+        
+        // if no resolution, check if center is within
+        if (within && !resolve_me && !resolve_you) {
+            velocity_shift(-1);
+            return true;
+        }
+        
         // check every edge for the closest point to the
-        // circle's center until a point is collides
+        // circle's center until a point collides
         var edge = null;
         for (var i=0, j=1; i<me.vertices.length; i++, j++) {
             if (j>=me.vertices.length)
                 j = 0;
             
-            edge = new LineSegment(me.vertices[i],me.vertices[j]);
-            if (Collision_Detector.collides_circle_line(you, edge)) {
-                console.log("point on edge within circle");
+            // get closest point and other related information
+            edge = new LineSegment(me.vertices[i], me.vertices[j]);
+            var info = Collision_Detector.collides_circle_line(you, edge, true);
+            
+            // COLLISION RESOLUTION
+            if (resolve_me || resolve_you) {
+                if (info[2] < min_distance) {
+                    
+                    // record minimum distance to circle's center
+                    min_distance = info[2];
+                    
+                    // record closest point
+                    closest = info[1];
+                    
+                    // if collision
+                    if (info[0] && !within) {
+                            
+                        // direction vector from you to me
+                        var dir = Nickel.UTILITY.normalize_vector(
+                                    Nickel.UTILITY.subtract_vector(closest, you.get_center()));
+
+                        // distance of circle's overlap over poly
+                        var overlap_dist = you.radius - min_distance;
+
+                        // push vector from you to me
+                        min_translation_vec = [dir[0] * overlap_dist, dir[1] * overlap_dist];
+                    }
+                }
+            } else if (info[0]) {
+                velocity_shift(-1);
                 return true;
             }
         }
         
-        // make a ray cast pointing right
-        var ray = new RayCast(you.get_center(), 0);
+        // if circle center is within, we must create the
+        // push vector a little bit differently:
+        if (within) {
+            
+            // direction vector from you to me
+            var dir = Nickel.UTILITY.normalize_vector(
+                        Nickel.UTILITY.subtract_vector(you.get_center(), closest));
+
+            // distance of circle's overlap over poly
+            var overlap_dist = you.radius + min_distance;
+
+            // push vector from you to me
+            min_translation_vec = [dir[0] * overlap_dist, dir[1] * overlap_dist];
+        }
         
-        // check how many times ray collides with poly
-        var collisions = 0;
-        for (var i=0, j=1; i<me.vertices.length; i++, j++) {
-            if (j>=me.vertices.length)
-                j = 0;
+        // if a resolution has been found, apply it
+        // to both of us according to given parameters
+        if (min_translation_vec) {
             
-            // adapt edge to a LineSegment object
-            var edge = new LineSegment(me.vertices[i], me.vertices[j]);
+            // shift back
+            velocity_shift(-1);
             
-            // check collision
-            if (Collision_Detector.collides_ray_line(ray, edge)) {
-                collisions++;
+            // resolve me
+            if (resolve_me && !resolve_you) {
+                me.shift_pos(min_translation_vec[0], min_translation_vec[1]);
+                
+                // return a pair of push vectors for me and you
+                return [min_translation_vec, [0,0]];
+
+            // resolve you
+            } else if (!resolve_me && resolve_you) {
+                you.shift_pos(min_translation_vec[0] * -1, min_translation_vec[1] * -1);
+                
+                // return a pair of push vectors for me and you
+                return [[0,0],min_translation_vec];
+
+            // resolve both partially
+            } else if (resolve_me && resolve_you) {
+                
+                // calculate heavyness percentage
+                my_heaviness = my_heaviness / (my_heaviness + your_heaviness);
+                your_heaviness = 1 - my_heaviness;
+                
+                // calculate how much me and you should be pushed away
+                // (so smaller vector means heavier polygon and vice versa)
+                var my_resolve   = [min_translation_vec[0] * your_heaviness,
+                                    min_translation_vec[1] * your_heaviness];
+                var your_resolve = [min_translation_vec[0] * my_heaviness * -1,
+                                    min_translation_vec[1] * my_heaviness * -1];
+
+                // push both of us
+                me.shift_pos(my_resolve[0], my_resolve[1]);
+                you.shift_pos(your_resolve[0], your_resolve[1]);
+                
+                // return a pair of push vectors for me and you
+                return [my_resolve,your_resolve];
             }
         }
         
-        // if odd number of collisions, circle is contained within poly
-        if (collisions % 2) {
-            console.log("circle within poly");
-            return true;
-        }
+        // shift back
+        velocity_shift(-1);
 
         // collision impossible by this point (worst case time complexity)
         return false;
@@ -427,7 +633,7 @@ var Collision_Detector = {
     
     ,
     
-    // TODO: TEST, OPTIMIZE
+    // TODO: TEST
     collides_poly_line  : function (me, you) {
         //--    Polygon-line collision detection via
         //--    separating axis theorem
@@ -436,8 +642,14 @@ var Collision_Detector = {
         // this is for the list of normal angles
         var norms = new Map();
         
+        // (append only half of my normal angles if I'm
+        //  equiangular and have even amount of vertices)
+        var len = me.vertices.length;
+        if (me.equiangular && !(me.vertices.length % 2))
+            len /= 2;
+        
         // append my normal angles to list
-        for (var i=0, j=1; i<me.vertices.length; i++, j++) {
+        for (var i=0, j=1; i<len; i++, j++) {
             
             // adjust next vertex indicator
             if (j >= me.vertices.length)
@@ -508,22 +720,22 @@ var Collision_Detector = {
         
         // make a ray cast pointing right (from point)
         var ray = new RayCast(you, 0);
-        
-        // check how many times ray collides with poly
+            
+        // check ray collision on all edges
         var collisions = 0;
         for (var i=0, j=1; i<me.vertices.length; i++, j++) {
             if (j>=me.vertices.length)
                 j = 0;
-            
+
             // adapt edge to a LineSegment object
             var edge = new LineSegment(me.vertices[i], me.vertices[j]);
-            
+
             // check collision
             if (Collision_Detector.collides_ray_line(ray, edge)) {
                 collisions++;
             }
         }
-        
+
         // if odd number of collisions, point is contained within poly
         if (collisions % 2) {
             console.log("point within polygon");
@@ -536,36 +748,140 @@ var Collision_Detector = {
 
     ,
     
-    collides_circle_circle : function (me, you) {
-        //--    Circle-circle collision detection
+    collides_circle_circle : function (me, you, resolve_me=false, resolve_you=false,
+                                       my_heaviness=1, your_heaviness=1,
+                                       my_velocity=null, your_velocity=null) {
+        //--    Circle-circle collision detection.
+        //--    Can also resolve me or you completely
+        //--    or both of us partially. Heaviness will
+        //--    determine how much fast each circle moves.
+        //--    If resolution is desired, return value
+        //--    will be a pair of push vectors for both
+        //--    circles.
         //--
+        
+        // begin by temporarily shifting us by our velocities
+        // (function makes this easier to use later)
+        var velocity_shift = function(dir=1) {
+            if (my_velocity)
+                me.shift_pos(my_velocity[0] * dir, my_velocity[1] * dir);
+            if (your_velocity)
+                you.shift_pos(your_velocity[0] * dir, your_velocity[1] * dir);
+        }
+        velocity_shift();
         
         // get difference between centers
         var diff = [me.cx - you.cx, me.cy - you.cy];
         
+        // edge case:
+        //   teporary solution:
+        //     if there is exactly 0 difference, make a small difference to avoid NaN values for resolution
+        if (diff[0]==0 && diff[1]==0) {
+            diff[0] += 0.00001;
+            me.cx += 0.00001;
+        }
+        
         // get distance between centers
         var dist = Nickel.UTILITY.magnitude_of_vector(diff);
         
+        // sum of radii
+        var sum = me.radius + you.radius;
+        
         // collision if distance between centers
-        // is less than sum of radii of me and you
-        return dist <= me.radius + you.radius ? true : false;
+        // is LESS THAN sum of radii of me and you
+        if (dist < sum) {
+            
+            //
+            // Collision Resolution:
+            //
+            if (resolve_me || resolve_you) {
+            
+                // overlap distance
+                var overlap = sum - dist;
+                
+                // unit direction vector from you to me
+                var unit_dir_vec = Nickel.UTILITY.normalize_vector(diff);
+                
+                // displacement vector from you to me
+                //  > this is the vector that begins at the closest
+                //  point in the overlap to your center, and stretches
+                //  to the closest point in the overlap to my center.
+                var overlap_vec = [unit_dir_vec[0] * overlap,unit_dir_vec[1] * overlap];
+
+                // shift back
+                velocity_shift(-1);
+                
+                // resolve me
+                if (resolve_me && !resolve_you) {
+                    me.shift_pos(overlap_vec[0], overlap_vec[1]);
+
+                    // return a pair of push vectors for me and you
+                    return [overlap_vec, [0,0]];
+
+                // resolve you
+                } else if (!resolve_me && resolve_you) {
+                    you.shift_pos(-1 * overlap_vec[0], -1 * overlap_vec[1]);
+
+                    // return a pair of push vectors for me and you
+                    return [[0,0], overlap_vec];
+
+                // resolve both partially
+                } else if (resolve_me && resolve_you) {
+                    
+                    // calculate heavyness percentage
+                    my_heaviness = my_heaviness / (my_heaviness + your_heaviness);
+                    your_heaviness = 1 - my_heaviness;
+
+                    // calculate how much me and you should be pushed away
+                    // (so smaller vector means heavier circle and vice versa)
+                    var my_resolve   = [overlap_vec[0] * your_heaviness,
+                                        overlap_vec[1] * your_heaviness];
+                    var your_resolve = [overlap_vec[0] * my_heaviness * -1,
+                                        overlap_vec[1] * my_heaviness * -1];
+
+                    // push both of us
+                    me.shift_pos(my_resolve[0], my_resolve[1]);
+                    you.shift_pos(your_resolve[0], your_resolve[1]);
+
+                    // return a pair of push vectors for me and you
+                    return [my_resolve,your_resolve];
+                }
+            }
+            
+            // shift back
+            velocity_shift(-1);
+            
+            // collision
+            return true;
+        }
+            
+        // shift back
+        velocity_shift(-1);
+        
+        // collision if distance between centers
+        // is EQUAL to sum of radii of me and you
+        // (else, absolutely no collision)
+        return dist == sum ? true : false;
     }
     
     ,
     
-    collides_circle_line : function (me, you) {
-        //--    Circle-line collision detection
+    collides_circle_line : function (me, you, detailed=false) {
+        //--    Circle-line collision detection.
+        //--    Detailed flag returns a pair containing
+        //--    the closest point on the line to the
+        //--    circle's center and its distance to the
+        //--    circle's center.
         //--
         
         // check if the closest point on the line to 
         // the center of the circle is inside the circle:
         var closest = Collision_Detector._closest_pt_on_lineseg_to_pt(you, me.get_center());
         var distance = Nickel.UTILITY.magnitude_of_vector([closest[0]-me.cx, closest[1]-me.cy]);
-        if (distance <= me.radius) {
-            return true;
-        } else {
-            return false;
-        }
+        if (detailed)
+            return [(distance <= me.radius), closest, distance];
+        else
+            return (distance <= me.radius);
     }
     
     ,
@@ -916,34 +1232,6 @@ var Collision_Detector = {
         return (me[0] == you[0] && me[1] == you[1]);
     }
 
-}
-
-
-
-////////////////////////////////////////////
-///   RESOLVER   ///////////////////////////
-////////////////////////////////////////////
-//
-//  Collision Resolution Functions
-//
-var Collision_Resolver = {
-    
-    //...TODO
-    
-}
-
-
-
-////////////////////////////////////////////
-///   AVOIDER   ////////////////////////////
-////////////////////////////////////////////
-//
-//  Collision Avoidance Functions
-//
-var Collision_Avoider = {
-    
-    //...TODO
-    
 }
 
 
@@ -3466,11 +3754,11 @@ function Sprite(scene, image_data, has_bbox=true) {
             if (!layer_check) {
                 
                 // no layer check
-                return this.hull.colliding_with(target.hull);
+                return this.hull.detect_collision(target.hull);
             } else if (layer_check && (target.get_layer() == this.get_layer())) {
                 
                 // same layer
-                return this.hull.colliding_with(target.hull);
+                return this.hull.detect_collision(target.hull);
             } else {
                 
                 // different layer
@@ -3479,7 +3767,7 @@ function Sprite(scene, image_data, has_bbox=true) {
         }
         
         // target is not a sprite
-        return this.hull.colliding_with(target);
+        return this.hull.detect_collision(target);
     }
 
     this.copy_base = function() {
@@ -3769,14 +4057,13 @@ function Sprite(scene, image_data, has_bbox=true) {
 function SpriteSelector(scene) {
 
 
-
     // --
     // ------- PROPERTIES ----------------------------------------
     // --
 
 
-
-    // Game object
+    // general
+    this.id = Nickel.UTILITY.assign_id();
     this.scene = scene;
 
     // selector box that is used to select multiple objects on screen
@@ -3792,11 +4079,9 @@ function SpriteSelector(scene) {
     };
 
 
-
     // --
     // ------- ESSENTIAL methods ---------------------------------
     // --
-
 
 
     this.update_selector = function() {
@@ -3908,7 +4193,6 @@ function SpriteSelector(scene) {
                 this.selector.cornerC.update();
                 this.selector.cornerD.update();
             }
-
         }
     }
 
@@ -3985,11 +4269,9 @@ function SpriteSelector(scene) {
     }
 
 
-
     // --
     // ------- GETTERS -------------------------------------------
     // --
-
 
 
     this.get_selected_all = function() {
@@ -4050,6 +4332,7 @@ function SpriteSelector(scene) {
         return selection;
     }
 
+    // TODO: FIX COLLISION DETECTION
     this.get_under_point = function(sprites, x, y, sorted=true) {
         //--    Returns ordered list (first element is top) of
         //--    sprites that are underneath a point
@@ -4078,6 +4361,7 @@ function SpriteSelector(scene) {
 
     }
 
+    // TODO: FIX COLLISION DETECTION
     this.get_under_mouse = function(sprites, sorted=true) {
         //--    Returns ordered list (first element is top) of
         //--    sprites that are underneath the mouse cursor
@@ -4088,7 +4372,8 @@ function SpriteSelector(scene) {
         var my = this.scene.mouse_y;
         return this.get_under_point(sprites,mx,my,sorted);
     }
-
+    
+    // TODO: FIX COLLISION DETECTION
     this.get_under_box = function(sprites, sorted=true) {
         //--    Returns ordered list (first element is top) of
         //--    sprites that are underneath the box selector
@@ -4119,11 +4404,9 @@ function SpriteSelector(scene) {
     }
 
 
-
     // --
     // ------- SETTERS -------------------------------------------
     // --
-
 
 
     this.set_selector = function(sel_data) {
@@ -4145,9 +4428,6 @@ function SpriteSelector(scene) {
         if (sel_data.click_type == 'right')  this.selector.starter = 2;
         this.selector.hide();
     }
-
-
-
 }//end SpriteSelector
 
 
