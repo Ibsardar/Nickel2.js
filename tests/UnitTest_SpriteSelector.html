@@ -1,0 +1,326 @@
+<!--
+    Unit Test for the SpriteSelector object
+    Ibrahim Sardar
+--->
+
+<!DOCTYPE HTML>
+
+<html lang="en-US">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Unit Test</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js">
+    </script>
+    <script src = "N2Base.js">
+    </script>
+    <script src = "Nickel2.js">
+    </script>
+    <!-- removes favicon.ico error -->
+    <link rel="shortcut icon" href="">
+</head>
+
+<body>
+    <!--<div style='text-align:center;font-family:verdana;font-size:small'>
+        Unit Test: Nickel 2 Base >> SpriteSelector
+    </div>-->
+    <div id="main">
+    </div>
+</body>
+</html>
+
+<script>
+
+    // Game
+    var Game = new Viewport('main');
+    Game.set_bg_color('grey');
+    Game.set_size(800,600);
+
+    // Sprites
+    var Adata = {img:'A.png',w:32, h:32};
+    var Bdata = {img:'B.png',w:32, h:32};
+    var Cdata = {img:'C.png',w:32, h:32};
+    var Ddata = {img:'D.png',w:32, h:32};
+    var FISHDATA = {img:'fish.png',w:64,h:64};
+    var FROGDATA = {img:'frog.png',w:64,h:32};
+    var FRYDATA = {img:'fry.png',w:16,h:64};
+    var SELDATA = {img:'poo.png',w:750,h:650};
+    var A = new Sprite(Game,Adata);
+    var B = new Sprite(Game,Bdata);
+    var C = new Sprite(Game,Cdata);
+    var D = new Sprite(Game,Ddata);
+    var Fish = new Sprite(Game,FISHDATA);       // id : 1004
+    var Frog = new Sprite(Game,FROGDATA,false);       // id : 1005
+    var Fry = new Sprite(Game,FRYDATA);         // id : 1006
+    var Sel = new Sprite(Game,SELDATA);
+    A.bound = function() {};
+    B.bound = function() {};
+    C.bound = function() {};
+    D.bound = function() {};
+    Fish.bound = function() {};
+    Frog.bound = function() {};
+    Fry.bound = function() {};
+    Sel.bound = function() {};
+    Fish.set_center(...Game.get_center()); // spread list into args
+    Frog.set_center(...Game.get_center());
+    Fry.set_center(...Game.get_center());
+    Fish.set_layer(10);
+    Frog.set_layer(40);
+    Fry.set_layer(30);
+    
+    Fry.set_turn(45);
+    Fry.set_scale(3);
+    Fry.offset_position(100,0);
+    
+    var SELECTORDATA = {
+        sprite : Sel,
+        click_type : 'left',
+        corner_topleft : A,
+        corner_topright : B,
+        corner_bottomright : C,
+        corner_bottomleft : D,
+        corner_persistence : true,
+        corner_start_size : {w:1,h:1},
+        border_color : '#66ff66',
+        border_thickness : 1,
+        sort_by : function(sprite) { return sprite.get_layer(); }
+    };
+    
+    // Main Selection System
+    var SS = new SpriteSelector(Game);
+    SS.set_selector(SELECTORDATA); 
+    
+    // Unit Tests...
+    var test_00 = function() {
+        var result = "[✓]";
+        SS.add_sprite_type('Sprite');
+        for (var sel_typ in SS.selection_dictionary) {
+            if (!SS.selection_dictionary[sel_typ]['Sprite']) {
+                result = "[✗]";
+            }
+        }
+        console.log(result + " : SpriteSelector.add_sprite_type('Sprite')");
+    }
+    var test_01 = function() {
+        var result = "[✓]";
+        SS.select('left',Fish);
+        for (var key1 in SS.selection_dictionary['left']['Sprite']) break;
+        if (SS.selection_dictionary['left']['Sprite'][Fish.get_id()] !== Fish ||
+            key1 != Fish.get_id()) {
+            result = "[✗]";
+        }
+        console.log(result + " : SpriteSelector.select('left',Fish)");
+    }
+    var test_02 = function() {
+        var result = "[✓]";
+        SS.unselect('left',Fish);
+        if (SS.selection_dictionary['left']['Sprite'][Fish.get_id()] != undefined) {
+            result = "[✗]";
+        }
+        console.log(result + " : SpriteSelector.unselect('left',Fish)");
+    }
+    var test_03 = function() {
+        var result = "[✓]";
+        SS.select('left',Fish);
+        SS.select('right',Fish);
+        SS.select('left',Frog);
+        SS.select('middle',Fry);
+        var s = SS.get_selected_all();
+        var b = [Fish,Fry,Fish,Frog];
+        for (var i = 0; i < s.length; ++i) {
+            if (s[i] !== b[i]) result = "[✗]";
+        }
+        console.log(result + " : SpriteSelector.get_selected_all");
+    }
+    var test_04 = function() {
+        var result = "[✓]";
+        var s = SS.get_selected_all_spr('left','Sprite');
+        var b = [Fish,Frog];
+        for (var i = 0; i < s.length; ++i) {
+            if (s[i] !== b[i]) result = "[✗]";
+        }
+        console.log(result + " : SpriteSelector.get_selected_all_spr('left','Sprite')");
+    }
+    var test_05 = function() {
+        var result = "[✓]";
+        SS.select('right',Fry);
+        SS.select('right',Fry);
+        var s = SS.get_selected_all_sel('right');
+        var b = [Fish,Fry];
+        for (var i = 0; i < s.length; ++i) {
+            if (s[i] !== b[i]) result = "[✗]";
+        }
+        console.log(result + " : SpriteSelector.get_selected_all_sel('right')");
+    }
+    var test_06 = function() {
+        var result = "[✓]";
+        SS.select('left',Fry);
+        SS.select('middle',Fry);
+        SS.select('right',Fry);
+        SS.unselect_all();
+        for (var s in SS.selection_dictionary) {
+            var sels = SS.selection_dictionary[s];
+            for (var t in sels) {
+                if (!jQuery.isEmptyObject(sels[t])) {
+                    result = "[✗]";
+                }
+            }
+        }
+        console.log(result + " : SpriteSelector.unselect_all");
+    }
+    var test_07 = function() {
+        var result = "[✓]";
+        SS.select('left',Fry);
+        SS.select('left',Fish);
+        SS.select('middle',Fry);
+        SS.select('middle',Frog);
+        SS.unselect_all_spr('Sprite');
+        for (var s in SS.selection_dictionary) {
+            var sels = SS.selection_dictionary[s];
+            for (var t in sels) {
+                if (!jQuery.isEmptyObject(sels[t])) {
+                    result = "[✗]";
+                }
+            }
+        }
+        console.log(result + " : SpriteSelector.unselect_all_spr");
+    }
+    var test_08 = function() {
+        var result = "[✓]";
+        SS.select('left',Fry);
+        SS.select('left',Fish);
+        SS.select('middle',Fry);
+        SS.select('middle',Frog);
+        SS.select('right',Fry);
+        SS.select('right',Fish);
+        SS.unselect_all_sel('left');
+        for (var t in SS.selection_dictionary[0]) {
+            var sprs = SS.selection_dictionary[0][t];
+            if (!jQuery.isEmptyObject(sprs)) {
+                result = "[✗]";
+            }
+        }
+        for (var t in SS.selection_dictionary[1]) {
+            var sprs = SS.selection_dictionary[1][t];
+            if (jQuery.isEmptyObject(sprs)) {
+                result = "[✗]";
+            }
+        }
+        for (var t in SS.selection_dictionary[2]) {
+            var sprs = SS.selection_dictionary[2][t];
+            if (jQuery.isEmptyObject(sprs)) {
+                result = "[✗]";
+            }
+        }
+        console.log(result + " : SpriteSelector.unselect_all_sel");
+    }
+    var test_HEAP = function() {
+        
+        // trackers
+        var performances_list = [];
+        var avg_minlist_performance = 0;
+        var avg_minheap_performance = 0;
+        var p_start = 0;
+        var p_end   = 0;
+        var times = 1000;
+        var result = 0;
+        
+        
+        // min list
+        for (var p=0; p<times; p++) {
+            p_start = performance.now();
+            /////////////////////////////////
+            var o = {};
+            var LIST = [];
+            for (var i=0; i<1000; i++) {
+                LIST.push(Nickel.UTILITY.random_number(0,1000));
+            }
+            while (LIST.length) {
+                LIST.splice(LIST.indexOf(Math.min(...LIST)), 1);
+            }
+            /////////////////////////////////
+            p_end = performance.now();
+            performances_list.push(p_end - p_start);
+        }
+        
+        for (var i=0;i<performances_list.length;i++){
+            avg_minlist_performance += performances_list[i];
+        }
+        avg_minlist_performance /= performances_list.length;
+        performances_list = [];
+        
+        // min heap
+        for (var p=0; p<times; p++) {
+            p_start = performance.now();
+            /////////////////////////////////
+            var HEAP = new Heap('min');
+            for (var i=0; i<1000; i++) {
+                HEAP.in(i,Nickel.UTILITY.random_number(0,1000));
+            }
+            HEAP.sort();
+            /////////////////////////////////
+            p_end = performance.now();
+            performances_list.push(p_end - p_start);
+        }
+        
+        for (var i=0;i<performances_list.length;i++){
+            avg_minheap_performance += performances_list[i];
+        }
+        avg_minheap_performance /= performances_list.length;
+        result = avg_minheap_performance - avg_minlist_performance;
+        
+        if (result < 0) {
+            console.log('[✓] : Min-Heap sort is faster than Min-List sort by ' + (result*-1) + ' ms.');
+        } else {
+            console.log('[✗] : Min-Heap sort is slower than Min-List sort by ' + result + ' ms.');
+        }
+    }
+    
+    // Run Tests...
+    console.log("Unit Test Progress Report:");
+    test_00();
+    test_01();
+    test_02();
+    test_03();
+    test_04();
+    test_05();
+    test_06();
+    test_07();
+    test_08();
+    test_HEAP();
+
+    Fry.hull.shape.stroke_color='RED';
+    Frog.hull.shape.stroke_color='GREEN';
+    Fish.hull.shape.stroke_color='YELLOW';
+    SS.selector.hull.shape.stroke_color='BLUE';
+    SS.selector.hull.shape.stroke_width=5;
+    // Game Loop
+    Nickel.update = function() {
+        Game.clear();
+        Fish.update();
+        Frog.update();
+        Fry.update();
+        Fry.hull.shape.update();
+        Frog.hull.shape.update();
+        Fish.hull.shape.update();
+        SS.update();
+        SS.selector.hull.shape.update();
+        
+        /*
+        if (Game.mouse_curr == 0) {
+            console.log(SS.get_under_box([Fish,Frog,Fry]));
+        }
+        //*/
+        
+        /*
+        console.log("Under Mouse: ");
+        console.log(SS.get_under_mouse([Fish,Frog,Fry]));
+        console.log("Under Box: ");
+        console.log(SS.get_under_box([Fish,Frog,Fry]));
+        //*/
+    }
+    Game.run();
+
+
+
+</script>

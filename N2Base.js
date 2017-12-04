@@ -241,6 +241,50 @@ function __main() {
 var Collision_Detector = {
     // TODO: CLEAN COMMENTS, PRINT STATEMENTS
     
+    _closest_pt_on_ray_to_pt : function (ray, pt) {
+        //--    Helper Function: returns the closest point
+        //--    on the given line segment to the given point
+        //--
+        
+        // get unit vector
+        var u = ray.get_unit();
+        
+        // get normal of unit vector
+        var n = [-u[1], u[0]];
+        
+        // dir * t + start = norm * s + pt
+        // dx * t + sx = nx * s + px
+        // dy * t + sy = ny * s + py
+        // solve: t = (nx*((dy*t+sy-py)/ny) + px - sx) / dx
+        //        ...
+        //        t = (nx*(sy - py) + ny*(px - sx)) / (ny*dx - dy*nx)
+        //
+        // parameter of line: t (substitute s)
+        var t = (n[0]*(ray.y - pt[1]) + n[1]*(pt[0] - ray.x)) / (n[1]*u[0] - u[1]*n[0]);
+        
+        // plug t back in to obtain points
+        var nearest_x = u[0] * t + ray.x;
+        var nearest_y = u[1] * t + ray.y;
+        
+        // check if point is within bounds of ray via
+        // parametric equations:
+        //
+        // find where point starts relative to line segment:
+        //   formula: pt = line-dir*t + line_start
+        //   where pt = [nearest_x, nearest_y]
+        //   solve:   t = (pt   - line_start)   / line_dir
+        //   x-comp:  t = (pt_x - line_start_x) / line_dir_x
+        //   y-comp:  t = (pt_y - line_start_y) / line_dir_y
+        //
+        // precedes bounds
+        if (t < 0)
+            return ray.get_pos();
+        // within bounds
+        return [nearest_x, nearest_y];
+    }
+    
+    ,
+    
     _closest_pt_on_lineseg_to_pt : function (line, pt) {
         //--    Helper Function: returns the closest point
         //--    on the given line segment to the given point
@@ -633,7 +677,6 @@ var Collision_Detector = {
     
     ,
     
-    // TODO: TEST
     collides_poly_line  : function (me, you) {
         //--    Polygon-line collision detection via
         //--    separating axis theorem
@@ -712,7 +755,33 @@ var Collision_Detector = {
     
     ,
     
-    // TODO: TEST, OPTIMIZE
+    // TODO: POSSIBLY UPDATE RETURN VALUE (AFTER FIXING LINE-RAY COLLISION)
+    collides_poly_ray   : function (me, you) {
+        //--    Polygon-ray collision detection via
+        //--    ray-edge collision checks
+        
+        // loop through each edge of polygon
+        var edge = null;
+        for (var i=0, j=1; i<me.vertices.length; i++, j++) {
+            if (j>=me.vertices.length)
+                j = 0;
+
+            // get closest point and other related information
+            edge = new LineSegment(me.vertices[i], me.vertices[j]);
+            var info = Collision_Detector.collides_ray_line(you, edge);
+            if (info) {
+                // collision detected
+                return info;
+            }
+        }
+        
+        // no collision (worst case time complexity)
+        return false;
+    }
+    
+    ,
+    
+    // TODO: OPTIMIZE
     collides_poly_point : function (me, you) {
         //--    Polygon-point collision detection via
         //--    separating axis theorem
@@ -877,6 +946,26 @@ var Collision_Detector = {
         // check if the closest point on the line to 
         // the center of the circle is inside the circle:
         var closest = Collision_Detector._closest_pt_on_lineseg_to_pt(you, me.get_center());
+        var distance = Nickel.UTILITY.magnitude_of_vector([closest[0]-me.cx, closest[1]-me.cy]);
+        if (detailed)
+            return [(distance <= me.radius), closest, distance];
+        else
+            return (distance <= me.radius);
+    }
+    
+    ,
+    
+    collides_circle_ray : function (me, you, detailed=false) {
+        //--    Circle-ray collision detection.
+        //--    Detailed flag returns a pair containing
+        //--    the closest point on the ray to the
+        //--    circle's center and its distance to the
+        //--    circle's center.
+        //--
+        
+        // check if the closest point on the line to 
+        // the center of the circle is inside the circle:
+        var closest = Collision_Detector._closest_pt_on_ray_to_pt(you, me.get_center());
         var distance = Nickel.UTILITY.magnitude_of_vector([closest[0]-me.cx, closest[1]-me.cy]);
         if (detailed)
             return [(distance <= me.radius), closest, distance];
@@ -1079,6 +1168,7 @@ var Collision_Detector = {
 
     ,
     
+    // TODO: ADD 'DETAILED' OPTION (INCLUDE POINT OF COLLISION AND OTHER RELATED INFO)
     collides_ray_line   : function (me, you) {
         //--    Ray-line collision detection
         //--    reference: "https://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect"
@@ -2448,7 +2538,7 @@ function LineSegment(startpoint, endpoint=[0,0]) {
 ////////////////////////////////////////////
 ///   RAY CAST   ///////////////////////////
 ////////////////////////////////////////////
-function RayCast(startpoint, direction_degs) {
+function RayCast(startpoint, direction_degs=0) {
 
     // general
     this.id = Nickel.UTILITY.assign_id();
@@ -2459,7 +2549,8 @@ function RayCast(startpoint, direction_degs) {
     this.y = startpoint[1];
 
     // dir (convert to radians)
-    this.rot = direction_degs / 180 * Math.PI;
+    if (direction_degs) this.rot = direction_degs / 180 * Math.PI;
+    else this.rot = 0;
 
     this.get_pos = function() {
         //--    Returns the start position
@@ -2472,7 +2563,7 @@ function RayCast(startpoint, direction_degs) {
         //--    Sets the rotation angle from degrees
         //--
         
-        this.rot = direction_degs / 180 * Math.PI;
+        this.rot = degrees / 180 * Math.PI;
     }
     
     this.get_unit = function() {
@@ -2512,6 +2603,9 @@ function BoundingBox(sprite) {
 
     // parent
     this.target = sprite;
+    
+    // indicates if we have already bounded around the sprite
+    this.updated = false;
 
 
     // --
@@ -2523,18 +2617,25 @@ function BoundingBox(sprite) {
         //--    Main update function
         //--
 
-        this.bound(this.target);
+        // indicate that we must bound self when needed
+        this.updated = false;
     }
 
-    this.bound = function(spr) {
+    this.bound = function(force_bound=false) {
         //--    Bounds self around a target sprite
         //--
+        
+        // ignore if this function if we already updated
+        if (this.updated && !force_bound) return;
+        
+        // indicate that we have bounded self
+        this.updated = true;
 
         // corners of sprite
-        var tl = spr.get_topleft();
-        var tr = spr.get_topright();
-        var bl = spr.get_bottomleft();
-        var br = spr.get_bottomright();
+        var tl = this.target.get_topleft();
+        var tr = this.target.get_topright();
+        var bl = this.target.get_bottomleft();
+        var br = this.target.get_bottomright();
 
         // top left of bbox
         var AXnew = Math.min(tl[0], tr[0], bl[0], br[0]);
@@ -2586,9 +2687,6 @@ function ColliderHull(sprite) {
     // TODO: TEST EXTENSIVELY
     // (this, simple shapes, and some collision_detection functions)
     
-    // *REDO*
-    // redo optimizations on simple poly objects with equiangular flags
-    
     // general
     this.id = Nickel.UTILITY.assign_id();
     this.type = 'ColliderHull';
@@ -2597,11 +2695,23 @@ function ColliderHull(sprite) {
     this.parent = sprite;
     
     // simple shape of hull
-    this.shape = null;
+    // Default: create rectangle matching the sprite's basic dimensions
+    this.shape = new SimplePoly(sprite.scene,
+                                [sprite.get_pos(),
+                                 [sprite.get_x()+sprite.get_w(),sprite.get_y()],
+                                 [sprite.get_x()+sprite.get_w(),sprite.get_y()+sprite.get_h()],
+                                 [sprite.get_x(),sprite.get_y()+sprite.get_h()]],
+                                true);
     
     // origin relative to sprite's origin
+    // Default: ignore sprite origin (use topleft of sprite as the origin)
     // Ex: 0,0 would mean this hull will rotate around sprite's origin on update
-    this.origin = [0,0];
+    this.origin = [-1 * sprite.get_origin()[0], -1 * sprite.get_origin()[1]];
+    
+    // keep track of how much shape has rotated and scaled
+    this.rotated = 0;
+    this.scaledx = 1;
+    this.scaledy = 1;
     
     // this limits the update function to be called once per frame
     this.updated = false;
@@ -2615,6 +2725,8 @@ function ColliderHull(sprite) {
         this.updated = false;
     }
     
+    // TODO: DON'T ONLY USE SCALEX - USE BOTH X AND Y (will have to handle special case for circles)
+    // TODO: FIX SCALE ERRORS (NaN VALUES APPEAR ONCE SCALE BECOMES 0)
     this.update_transformations = function() {
         //--    Updates the hull's shape based on its parent
         //--    sprite's position, rotation, and horizontal scale
@@ -2622,14 +2734,35 @@ function ColliderHull(sprite) {
         //--
         
         // only update tranformations if they have not been
-        // updated this frame already:
+        // updated this frame already: (also avoid update if
+        // dimensions of parent don't make sense)
         if (!this.updated) {
             this.updated = true;
             var par_pos = this.parent.get_pos2();
             var hul_pos = [par_pos[0]+this.origin[0], par_pos[1]+this.origin[1]];
-            this.shape.set_pos(hul_pos[0], hul_pos[1]);
-            this.shape.rotate_around(this.parent.get_rot(), hul_pos);
-            this.shape.scale_around(this.parent.get_scalex(), hul_pos);
+            
+            // translation
+            this.shape.set_pos(hul_pos);
+            
+            // rotation
+            this.shape.rotate_around(this.parent.get_rot() - this.rotated, hul_pos);
+            
+            // scaling
+            // (circle cannot scale differently on x and y axis, but polys can)
+            // (just use x-axis scale if circle hull)
+            // TODO: OPTIMIZE CHECKING TYPES HERE (AS WELL AS MANY OTHER PLACES IN THIS FILE)
+            var sx = this.parent.get_scalex();
+            var sy = this.parent.get_scaley();
+            if (this.shape.type == "SimplePoly") {
+                this.shape.scale_around2(sx / this.scaledx, sy / this.scaledy, hul_pos);
+            } else if (this.shape.type == "SimpleCircle") {
+                this.shape.scale_around(sx / this.scaledx, hul_pos);
+            }
+            
+            // remember last updated values
+            this.rotated = this.parent.get_rot();
+            this.scaledx = sx;
+            this.scaledy = sy;
         }
     }
     
@@ -2638,9 +2771,11 @@ function ColliderHull(sprite) {
         //--
         
         this.shape = simple_shape;
+        this.updated = false;
         this.update_transformations();
     }
     
+    // TODO: OPTIMIZE
     this.detect_collision = function(obj) {
         //--    Returns if a collision was detected
         //--    with some object
@@ -2662,13 +2797,16 @@ function ColliderHull(sprite) {
             // you = hull
             } else if (obj.type == "ColliderHull") {
                 
+                // also make sure obj is up to date with its parent sprite
+                obj.update_transformations();
+                
                 // you = circle hull
-                if (obj.shape == "SimpleCircle") {
+                if (obj.shape.type == "SimpleCircle") {
                     
                     return Collision_Detector.collides_circle_circle(this.shape, obj.shape);
                 
                 // you = poly hull
-                } else if (obj.shape == "SimplePoly") {
+                } else if (obj.shape.type == "SimplePoly") {
                 
                     return Collision_Detector.collides_poly_circle(obj.shape, this.shape);
                 }
@@ -2688,30 +2826,32 @@ function ColliderHull(sprite) {
                 
                 return Collision_Detector.collides_circle_line(this.shape, obj);
                 
-            // you = unknown
-            } else {
+            // you = ray
+            } else if (obj.type == "RayCast") {
                 
-                return false;
+                return Collision_Detector.collides_circle_ray(this.shape, obj);
             }
                 
         // me = poly
         } else if (this.shape.type == "SimplePoly") {
-        
+            
             // you = point
             if (Nickel.UTILITY.is_array(obj)) {
-             
                 return Collision_Detector.collides_poly_point(this.shape, obj);
                 
             // you = hull
             } else if (obj.type == "ColliderHull") {
                 
+                // also make sure obj is up to date with its parent sprite
+                obj.update_transformations();
+                
                 // you = circle hull
-                if (obj.shape == "SimpleCircle") {
+                if (obj.shape.type == "SimpleCircle") {
                     
                     return Collision_Detector.collides_poly_circle(this.shape, obj.shape);
                 
                 // you = poly hull
-                } else if (obj.shape == "SimplePoly") {
+                } else if (obj.shape.type == "SimplePoly") {
                 
                     return Collision_Detector.collides_poly_poly(obj.shape, this.shape);
                 }
@@ -2731,17 +2871,148 @@ function ColliderHull(sprite) {
                 
                 return Collision_Detector.collides_poly_line(this.shape, obj);
                 
-            // you = unknown
-            } else {
+            // you = ray
+            } else if (obj.type == "RayCast") {
                 
-                return false;
+                return Collision_Detector.collides_poly_ray(this.shape, obj);
             }
+        }
         
         // me = unknown
-        } else {
+        return false;
+    }
+    
+    // TODO
+    this.resolve_collision = function(obj,resolve_me=true,resolve_you=true,my_heaviness=1,
+                                      ur_heaviness=1,my_velocity=null,ur_velocity=null) {
+        //--    Same as detect_collision but also resolves
+        //--
+        
+        // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
+        
+        // first, make sure hull is up to date with parent sprite
+        this.update_transformations();
+        
+        // me = circle
+        if (this.shape.type == "SimpleCircle") {
+        
+            // you = point
+            if (Nickel.UTILITY.is_array(obj)) {
+             
+                return Collision_Detector.collides_circle_point(this.shape, obj);
+                
+            // you = hull
+            } else if (obj.type == "ColliderHull") {
+                
+                // also make sure obj is up to date with its parent sprite
+                obj.update_transformations();
+                
+                // you = circle hull
+                if (obj.shape.type == "SimpleCircle") {
+                    
+                    return Collision_Detector.collides_circle_circle(this.shape, obj.shape,
+                                                                     resolve_me, resolve_you,
+                                                                     my_heaviness, ur_heaviness,
+                                                                     my_velocity, ur_velocity);
+                
+                // you = poly hull
+                } else if (obj.shape.type == "SimplePoly") {
+                
+                    var res = Collision_Detector.collides_poly_circle(obj.shape, this.shape,
+                                                                   resolve_you, resolve_me,
+                                                                   ur_heaviness, my_heaviness,
+                                                                   ur_velocity, my_velocity);
+                    return [res[1], res[0]]; // order: me, you
+                }
+                
+            // you = poly
+            } else if (obj.type == "SimplePoly") {
+
+                var res = Collision_Detector.collides_poly_circle(obj, this.shape,
+                                                                  resolve_you, resolve_me,
+                                                                  ur_heaviness, my_heaviness,
+                                                                  ur_velocity, my_velocity);
+                return [res[1], res[0]]; // order: me, you
+                
+            // you = circle
+            } else if (obj.type == "SimpleCircle") {
+                
+                return Collision_Detector.collides_circle_circle(this.shape, obj,
+                                                                 resolve_me, resolve_you,
+                                                                 my_heaviness, ur_heaviness,
+                                                                 my_velocity, ur_velocity);
+                
+            // you = line
+            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
+                
+                return Collision_Detector.collides_circle_line(this.shape, obj);
+                
+            // you = ray
+            } else if (obj.type == "RayCast") {
+                
+                return Collision_Detector.collides_circle_ray(this.shape, obj);
+            }
+                
+        // me = poly
+        } else if (this.shape.type == "SimplePoly") {
             
-            return false;
+            // you = point
+            if (Nickel.UTILITY.is_array(obj)) {
+                return Collision_Detector.collides_poly_point(this.shape, obj);
+                
+            // you = hull
+            } else if (obj.type == "ColliderHull") {
+                
+                // also make sure obj is up to date with its parent sprite
+                obj.update_transformations();
+                
+                // you = circle hull
+                if (obj.shape.type == "SimpleCircle") {
+                    
+                    return Collision_Detector.collides_poly_circle(this.shape, obj.shape,
+                                                                   resolve_me, resolve_you,
+                                                                   my_heaviness, ur_heaviness,
+                                                                   my_velocity, ur_velocity);
+                
+                // you = poly hull
+                } else if (obj.shape.type == "SimplePoly") {
+                
+                    return Collision_Detector.collides_poly_poly(this.shape, obj.shape,
+                                                                 resolve_me, resolve_you,
+                                                                 my_heaviness, ur_heaviness,
+                                                                 my_velocity, ur_velocity);
+                }
+                
+            // you = poly
+            } else if (obj.type == "SimplePoly") {
+
+                return Collision_Detector.collides_poly_poly(this.shape, obj,
+                                                             resolve_me, resolve_you,
+                                                             my_heaviness, ur_heaviness,
+                                                             my_velocity, ur_velocity);
+                
+            // you = circle
+            } else if (obj.type == "SimpleCircle") {
+                
+                return Collision_Detector.collides_poly_circle(this.shape, obj,
+                                                               resolve_me, resolve_you,
+                                                               my_heaviness, ur_heaviness,
+                                                               my_velocity, ur_velocity);
+                
+            // you = line
+            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
+                
+                return Collision_Detector.collides_poly_line(this.shape, obj);
+                
+            // you = ray
+            } else if (obj.type == "RayCast") {
+                
+                return Collision_Detector.collides_poly_ray(this.shape, obj);
+            }
         }
+        
+        // me = unknown
+        return false;
     }
 }
 
@@ -2760,7 +3031,7 @@ function Sprite(scene, image_data, has_bbox=true) {
 
     // general
     this.id = Nickel.UTILITY.assign_id();
-    this.type = 'Sprite';   // hash this string into an int for efficiency ***HERE***
+    this.type = 'Sprite';   // hash this string into an int for efficiency ***TODO HERE***
     this.scene = scene;
     this.canvas = scene.canvas;
     this.context = this.canvas.getContext("2d");
@@ -2778,8 +3049,8 @@ function Sprite(scene, image_data, has_bbox=true) {
         this.bbox = new BoundingBox(this);
     }
     
-    // default collision hull
-    this.hull = new ColliderHull(this);
+    // init collision hull to null
+    this.hull = null;
 
     // size
     this.width = image_data.w;
@@ -2847,6 +3118,9 @@ function Sprite(scene, image_data, has_bbox=true) {
 
         // re-fixate bounding box
         if (this.bbox) this.bbox.update();
+        
+        // updates collision hull
+        this.hull.update();
 
         // user custom update
         this.update_more();
@@ -3045,7 +3319,10 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    Returns width of bounding box
         //--
 
-        if (this.bbox) return this.bbox.w;
+        if (this.bbox) {
+            this.bbox.bound();
+            return this.bbox.w;
+        }
         return null;
     }
 
@@ -3053,7 +3330,10 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    Returns height of bounding box
         //--
 
-        if (this.bbox) return this.bbox.h;
+        if (this.bbox) {
+            this.bbox.bound();
+            return this.bbox.h;
+        }
         return null;
     }
 
@@ -3110,19 +3390,38 @@ function Sprite(scene, image_data, has_bbox=true) {
 
         return [this.get_x(), this.get_y()];
     }
+    
+    this.get_x2 = function() {
+        //--    Returns accurate x position (left)
+        //--    (includes origin offset)
+        //--
+
+        return this.get_x() + this.origin[0];
+    }
+
+    this.get_y2 = function() {
+        //--    Returns accurate y position (top)
+        //--    (includes origin offset)
+        //--
+
+        return this.get_y() + this.origin[1];
+    }
 
     this.get_pos2 = function() {
         //--    Returns accurate position (includes origin offset)
         //--
 
-        return [this.get_x()+this.origin[0], this.get_y()+this.origin[1]];
+        return [this.get_x2(), this.get_y2()];
     }
 
     this.get_cx = function() {
         //--    Returns accurate center x position
         //--
 
-        if (this.bbox) return this.bbox.get_cx();
+        if (this.bbox) {
+            this.bbox.bound();
+            return this.bbox.get_cx();
+        }
         return this.x + (this.get_w() / 2);
     }
 
@@ -3130,7 +3429,10 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    Returns accurate center y position
         //--
 
-        if (this.bbox) return this.bbox.get_cy();
+        if (this.bbox) {
+            this.bbox.bound();
+            return this.bbox.get_cy();
+        }
         return this.y + (this.get_h() / 2);
     }
 
@@ -3138,7 +3440,10 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    Returns accurate center position
         //--
 
-        if (this.bbox) return this.bbox.get_center();
+        if (this.bbox) {
+            this.bbox.bound();
+            return this.bbox.get_center();
+        }
         return [this.get_cx(), this.get_cy()];
     }
 
@@ -3147,7 +3452,10 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    (does not work if sprite rotates)
         //--
 
-        if (this.bbox) return this.bbox.right;
+        if (this.bbox) {
+            this.bbox.bound();
+            return this.bbox.right;
+        }
         return this.x + this.get_w();
     }
 
@@ -3156,7 +3464,10 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    (does not work if sprite rotates)
         //--
 
-        if (this.bbox) return this.bbox.top;
+        if (this.bbox) {
+            this.bbox.bound();
+            return this.bbox.top;
+        }
         return this.y;
     }
 
@@ -3165,7 +3476,10 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    (does not work if sprite rotates)
         //--
 
-        if (this.bbox) return this.bbox.left;
+        if (this.bbox) {
+            this.bbox.bound();
+            return this.bbox.left;
+        }
         return this.x;
     }
 
@@ -3174,7 +3488,10 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    (does not work if sprite rotates)
         //--
 
-        if (this.bbox) return this.bbox.bottom;
+        if (this.bbox) {
+            this.bbox.bound();
+            return this.bbox.bottom;
+        }
         return this.y + this.get_h();
     }
 
@@ -3270,7 +3587,7 @@ function Sprite(scene, image_data, has_bbox=true) {
     }
 
 
-    // +++  DELETE THIS GARBAGE MAN (CAREFULLY) ~~~~~~~~~~~
+    // +++  DELETE THIS GARBAGE MAN (CAREFULLY) ~~~~~~~~~~~  (MAYBE NOT GET VELOCITY?)
     // +++ > force-related:
 
 
@@ -3532,16 +3849,24 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    Sets center x position
         //--
 
-        if (this.bbox) this.x += cx - this.bbox.get_cx();
-        else this.x = cx - (this.get_w() / 2);
+        if (this.bbox) {
+            this.bbox.bound(true);
+            this.x += cx - this.bbox.get_cx();
+            this.bbox.update();
+        } else
+            this.x = cx - (this.get_w() / 2);
     }
 
     this.set_cy = function(cy) {
         //--    Sets center y position
         //--
 
-        if (this.bbox) this.y += cy - this.bbox.get_cy();
-        else this.y = cy - (this.get_h() / 2);
+        if (this.bbox) {
+            this.bbox.bound(true);
+            this.y += cy - this.bbox.get_cy();
+            this.bbox.update();
+        } else
+            this.y = cy - (this.get_h() / 2);
     }
 
     this.set_center = function(cx,cy) {
@@ -3557,8 +3882,12 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    (works best with bbox)
         //--
 
-        if (this.bbox) this.x += rx - this.bbox.left - this.bbox.w;
-        else this.x = rx - this.get_w();
+        if (this.bbox) {
+            this.bbox.bound(true);
+            this.x += rx - this.bbox.left - this.bbox.w;
+            this.bbox.update();
+        } else
+            this.x = rx - this.get_w();
     }
 
     this.set_left = function(lx) {
@@ -3566,8 +3895,12 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    (works best with bbox)
         //--
 
-        if (this.bbox) this.x += lx - this.bbox.left;
-        else this.x = lx;
+        if (this.bbox) {
+            this.bbox.bound(true);
+            this.x += lx - this.bbox.left;
+            this.bbox.update();
+        } else
+            this.x = lx;
     }
 
     this.set_top = function(ty) {
@@ -3575,8 +3908,12 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    (works best with bbox)
         //--
 
-        if (this.bbox) this.y += ty - this.bbox.top;
-        else this.y = ty;
+        if (this.bbox) {
+            this.bbox.bound(true);
+            this.y += ty - this.bbox.top;
+            this.bbox.update();
+        } else
+            this.y = ty;
     }
 
     this.set_bottom = function(by) {
@@ -3584,8 +3921,12 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    (works best with bbox)
         //--
 
-        if (this.bbox) this.y += by - this.bbox.top - this.bbox.h;
-        else this.y = by - this.get_h();
+        if (this.bbox) {
+            this.bbox.bound(true);
+            this.y += by - this.bbox.top - this.bbox.h;
+            this.bbox.update();
+        } else
+            this.y = by - this.get_h();
     }
 
 
@@ -3740,8 +4081,8 @@ function Sprite(scene, image_data, has_bbox=true) {
     // ------- OTHER methods -------------------------------------
     // --
 
-
-
+    
+    // TODO: OPTIMIZE
     this.colliding_with = function(target, layer_check=true) {
         //--    Returns true if target is colliding
         //--    with self (and in same layer if specified)
@@ -3751,17 +4092,17 @@ function Sprite(scene, image_data, has_bbox=true) {
         
         // if sprite, check layer if specified, then check their hulls
         if (target.type == "Sprite") {
+                
+            // no layer check
             if (!layer_check) {
                 
-                // no layer check
                 return this.hull.detect_collision(target.hull);
+            // same layer check
             } else if (layer_check && (target.get_layer() == this.get_layer())) {
                 
-                // same layer
                 return this.hull.detect_collision(target.hull);
+            // different layer
             } else {
-                
-                // different layer
                 return false;
             }
         }
@@ -3769,21 +4110,90 @@ function Sprite(scene, image_data, has_bbox=true) {
         // target is not a sprite
         return this.hull.detect_collision(target);
     }
+    
+    // TODO: OPTIMIZE
+    this.resolve_with = function(target, layer_check=true, resolve_me=true, resolve_you=true,
+                                 my_heaviness=1, ur_heaviness=1, resolve_velocity=false,
+                                 my_velocity=null, ur_velocity=null) {
+        //--    Same as Sprite.colliding_with but also
+        //--    resolves collisions.
+        //--
+
+        // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
+        
+        // keeps track of shift amount of self and target, respectively
+        // (ultimately also keeps track of if a collision occurred)
+        var resolve = null;
+        
+        // if sprite, check layer if specified, then check their hulls
+        if (target.type == "Sprite") {
+                
+            // no layer check
+            if (!layer_check) {
+                
+                resolve = this.hull.resolve_collision(target.hull,
+                                                   resolve_me, resolve_you,
+                                                   my_heaviness, ur_heaviness,
+                                                   my_velocity, ur_velocity);
+            // same layer check
+            } else if (layer_check && (target.get_layer() == this.get_layer())) {
+                
+                resolve = this.hull.resolve_collision(target.hull,
+                                                   resolve_me, resolve_you,
+                                                   my_heaviness, ur_heaviness,
+                                                   my_velocity, ur_velocity);
+            // different layer
+            } else {
+                return false;
+            }
+            
+            // sync resolution with target as well as
+            // return false if no collision occurred
+            if (resolve)
+                target.sync_with_hull(resolve[1]);
+            else
+                return false;
+            
+        // target is not a sprite
+        } else {
+        
+            resolve = this.hull.resolve_collision(target,
+                                               resolve_me, resolve_you,
+                                               my_heaviness, ur_heaviness,
+                                               my_velocity, ur_velocity);
+        }
+        
+        // sync resolution with self as well
+        // as return if collision occurred
+        if (resolve) {
+            if (Nickel.UTILITY.is_array(resolve))
+                this.sync_with_hull(resolve[0]);
+            return true;
+        } else
+            return false;
+    }
+    
+    this.sync_with_hull = function(shift_vector) {
+        //--    Syncs/applies hull's transformations to self.
+        //--    (currently, hull can only translate as a
+        //--    result of a resolution)
+        //--    
+        
+        // shift self
+        this.offset_position(shift_vector[0], shift_vector[1]);
+    }
 
     this.copy_base = function() {
         //--    Returns a base copy of self
         //--
-
-        var _has_bbox = false;
-        if (this.bbox)
-            _has_bbox = true;
 
         if (this.image)
             var _img_data = {img:this.image.src, w:this.get_w_orig(), h:this.get_h_orig()};
         else
             var _img_data = {w:this.get_w_orig(), h:this.get_h_orig()};
 
-        var spr = new Sprite(this.scene, _img_data, _has_bbox);
+        var spr = new Sprite(this.scene, _img_data, !!this.bbox);
+        
         spr.update();
         return spr;
     }
@@ -4047,6 +4457,15 @@ function Sprite(scene, image_data, has_bbox=true) {
         this.last_rot = ang;
     }
 
+    
+    // --
+    // ------- POST-CREATION INIT methods ------------------------
+    // --
+    
+    
+    // init default hull
+    this.hull = new ColliderHull(this);
+    
 }//end Sprite
 
 
@@ -4332,7 +4751,6 @@ function SpriteSelector(scene) {
         return selection;
     }
 
-    // TODO: FIX COLLISION DETECTION
     this.get_under_point = function(sprites, x, y, sorted=true) {
         //--    Returns ordered list (first element is top) of
         //--    sprites that are underneath a point
@@ -4342,7 +4760,7 @@ function SpriteSelector(scene) {
         if (sorted) {
             var heap = new Heap('max');
             for (var i in sprites) {
-                if (sprites[i].intersects_point(x,y)) {
+                if (sprites[i].colliding_with([x,y], false)) {
                     var sort_by = this.selector.sort_by(sprites[i]);
                     heap.in(sprites[i],sort_by);
                 }
@@ -4352,7 +4770,7 @@ function SpriteSelector(scene) {
         } else {
             var over = [];
             for (var i in sprites) {
-                if (sprites[i].intersects_point(x,y)) {
+                if (sprites[i].colliding_with([x,y], false)) {
                     over.push(sprites[i]);
                 }
             }
@@ -4361,7 +4779,6 @@ function SpriteSelector(scene) {
 
     }
 
-    // TODO: FIX COLLISION DETECTION
     this.get_under_mouse = function(sprites, sorted=true) {
         //--    Returns ordered list (first element is top) of
         //--    sprites that are underneath the mouse cursor
@@ -4373,19 +4790,22 @@ function SpriteSelector(scene) {
         return this.get_under_point(sprites,mx,my,sorted);
     }
     
-    // TODO: FIX COLLISION DETECTION
     this.get_under_box = function(sprites, sorted=true) {
         //--    Returns ordered list (first element is top) of
         //--    sprites that are underneath the box selector
         //--    (ordered by collision layer)
         //--
 
+        // ignore if invisible
         if (!this.selector.is_visible()) return false;
+        
+        // ignore if dimensions don't make sense
+        if (!this.selector.get_w() || !this.selector.get_h()) return false;
 
         if (sorted) {
             var heap = new Heap('max');
             for (var i in sprites) {
-                if (this.selector.colliding(sprites[i], false)) {
+                if (this.selector.colliding_with(sprites[i], false)) {
                     var sort_by = this.selector.sort_by(sprites[i]);
                     heap.in(sprites[i],sort_by);
                 }
@@ -4395,7 +4815,7 @@ function SpriteSelector(scene) {
         } else {
             var under = [];
             for (var i in sprites) {
-                if (this.selector.colliding(sprites[i], false)) {
+                if (this.selector.colliding_with(sprites[i], false)) {
                     under.push(sprites[i]);
                 }
             }

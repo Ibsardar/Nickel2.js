@@ -131,6 +131,7 @@ var Pathfinder = {
     
     ,
     
+    // TODO: DELETE THIS CAREFULLY
     is_in_los           : function(host,source,target,obstructions,avoid_collisions=false,offset_size=null) {
         //
         // returns true if target is in line of sight of sprite
@@ -139,13 +140,9 @@ var Pathfinder = {
         // offset_size: rayblock size=[width + offset[1], height + offset[0]]
         //
         
-        //
-        //  OPTIMIZE THIS (TODO)
-        //
-        
         // change source to be an array if we don't care about collisions
         if (!avoid_collisions) {
-            source = [source.get_cx(),source.get_cy()];
+            source = [source.get_cx(), source.get_cy()];
         }
         
         // obtain target
@@ -214,7 +211,8 @@ var Pathfinder = {
         rayblock.set_pos2(s[4],s[5]);
         rayblock.set_rot(theta);
         rayblock.update();
-        UList.push(rayblock);
+        
+        ///UList.push(rayblock); //junk
         
         // apply offset, if any
         if (offset_size) {
@@ -238,11 +236,36 @@ var Pathfinder = {
     
     ,
     
-    is_in_los2          : function(host,source,target,obstructions) {
-        //--    returns true if target is in line of sight of source
+    // TODO: OPTIMIZE TYPE CHECKING, OPTIMIZE LOOP, REDO WITH LINESEG INSTEAD OF RAY
+    is_in_los2          : function(start,end,obstructions) {
+        //--    returns true if there is nothing blocking
+        //--    the view from start to end
         //--
         
-        //...
+        // lineseg from start to end points
+        var line = new LineSegment(start, end);
+        
+        // check collision of lineseg with every obstruction
+        for (var i in obstructions) {
+            if (Nickel.UTILITY.is_array(obstructions[i])) {
+                if (Collision_Detector.collides_line_point(line, obstructions[i])) return false;
+                
+            } else if (obstructions[i].type == "Sprite") {
+                if (obstructions[i].colliding_with(line, false)) return false;
+                
+            } else if (obstructions[i].type == "SimplePoly") {
+                if (Collision_Detector.collides_poly_line(obstructions[i], line)) return false;
+                
+            } else if (obstructions[i].type == "SimpleCircle") {
+                if (Collision_Detector.collides_circle_line(obstructions[i], line)) return false;
+                
+            } else if (obstructions[i].type == "SimpleLine") {
+                if (Collision_Detector.collides_line_line(line, obstructions[i])) return false;
+            }
+        }
+        
+        // no obstructions are blocking the view!
+        return true;
     }
     
     ,
@@ -788,7 +811,8 @@ var Pathfinder = {
     
     ,
     
-    theta_star : function(host,map,a,b,lim_e,lim_n,lim_w,lim_s,obstructions=[],sprite=null,incl_diag=true,limit=333333) {
+    // TODO: CLEAN UP COMMENTS AND OTHER JUNK, OPTIMIZE
+    theta_star : function(host,map,a,b,lim_e,lim_n,lim_w,lim_s,obstructions=[],incl_diag=true,limit=333333) {
         
         // edge case
         if (a[0]==b[0] && a[1]==b[1]) return [];
@@ -876,24 +900,11 @@ var Pathfinder = {
                         tilcurr = map.get_tile(tmpcurr.pos());
                         tilnext = map.get_tile(tmpnext.pos());
                         
-                        // check if adjacent is reachable from curr
-                        if (sprite) {
-
-                            // use sprite dimensions for a collision-less path
-                            sprite.hide();
-                            tmpspr = sprite.copy_frozen();
-                            sprite.show();
-                            tmpspr.set_center(tilnext.get_cx(),tilnext.get_cy());
-                            tmpspr.set_origin_centered();
-                            tmpspr.update();
-                            tmpspr.turn_to(tilcurr);
-                            var LOS = Pathfinder.is_in_los(host,tmpspr,tilcurr.get_center(),obstructions,true);
-                        } else {
-
-                            // use point for absolute path
-                            var LOS = Pathfinder.is_in_los(host,tilnext.get_center(),tilcurr.get_center(),obstructions);
-                        }
+                        // ***MAY NOT NEED THIS HERE
+                        // can curr see adjacent?
+                        var LOS = Pathfinder.is_in_los2(tilnext.get_center(), tilcurr.get_center(), obstructions);
                         
+                        // check if adjacent is reachable from curr
                         if (LOS) {
                     
                             tmpcost = tmpcurr.G + Pathfinder.distance_to(curr, adjs[i]);
@@ -920,25 +931,11 @@ var Pathfinder = {
 
                                 // if prev parent exists
                                 if (tmpcurr.P) {
-
+                                    
+                                    // get LOS to prev parent
+                                    var LOS2 = Pathfinder.is_in_los2(tilnext.get_center(), tilcurp.get_center(), obstructions);
+                                    
                                     // if LOS to prev parent:
-                                    if (sprite) {
-
-                                        // use sprite dimensions for a collision-less path
-                                        sprite.hide();
-                                        tmpspr = sprite.copy_frozen();
-                                        sprite.show();
-                                        tmpspr.set_center(tilnext.get_cx(),tilnext.get_cy());
-                                        tmpspr.set_origin_centered();
-                                        tmpspr.update();
-                                        tmpspr.turn_to(tilcurp);
-                                        var LOS2 = Pathfinder.is_in_los(host,tmpspr,tilcurp.get_center(),obstructions,true);
-                                    } else {
-
-                                        // use point for absolute path
-                                        var LOS2 = Pathfinder.is_in_los(host,tilnext.get_center(),tilcurp.get_center(),obstructions);
-                                    }
-
                                     if (LOS2) {
 
                                         // then set prev parent as parent

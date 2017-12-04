@@ -1,0 +1,94 @@
+<!--
+    Unit Test for the SpriteSelector object
+    Ibrahim Sardar
+--->
+
+<!DOCTYPE HTML>
+
+<html lang="en-US">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Unit Test</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js">
+    </script>
+    <script src = "N2Base.js">
+    </script>
+    <script src = "Nickel2.js">
+    </script>
+    <!-- removes favicon.ico error -->
+    <link rel="shortcut icon" href="">
+</head>
+
+<body>
+    <!--<div style='text-align:center;font-family:verdana;font-size:small'>
+        Unit Test: Nickel 2 Base >> SpriteSelector
+    </div>-->
+    <div id="main">
+    </div>
+</body>
+</html>
+
+<script>
+
+    // Game
+    var Game = new Viewport('main');
+    Game.set_bg_color('white');
+    Game.set_size(800,600);
+    
+    // Run Tests...
+    console.log("Unit Test Progress Report:");
+    //...
+    
+    // Quad tree test:
+    screen_bounds = {
+        x:0,
+        y:0,
+        w:Game.get_w(),
+        h:Game.get_h()
+    };
+    
+    var QT = new QuadTree(1,8,screen_bounds);
+    //QT.in('A1',[20,25],[50,50]);
+
+    var tim = 0;
+    
+    // Game Loop
+    Nickel.update = function() {
+        if (tim <= 1000) {
+            Game.clear();
+            console.log('Drawing Quad Tree...')
+            Game.reset_key_upped();
+            
+            var rnd_sz = Nickel.UTILITY.random_number(2,12);
+            var random_pt = [Nickel.UTILITY.random_number(0,Game.get_w()),
+                             Nickel.UTILITY.random_number(0,Game.get_h())];
+            var rnd_cnt2 = Nickel.UTILITY.random_number(1,3);
+            
+            QT.in('Rand', random_pt, [rnd_sz, rnd_sz]);
+            QT.viz(Game.context);
+        }
+        tim++;
+        /*
+        if (Game.mouse_upped == 0) {
+            Game.clear();
+            console.log('Drawing Quad Tree...')
+            QT.in('Clicked',[Game.mouse_x,Game.mouse_y],[16,16]);
+            Game.reset_mouse_upped();
+            QT.viz(Game.context);
+        }
+        */
+        if (Game.mouse_upped == 0) {
+            Game.clear();
+            console.log('Drawing Quad Tree...');
+            //QT.in('Clicked',[Game.mouse_x,Game.mouse_y],[16,16]);
+            console.log(QT.get([Game.mouse_x,Game.mouse_y],[1,1]));
+            Game.reset_mouse_upped();
+            QT.viz(Game.context);
+        }
+    }
+    Game.run();
+
+
+
+</script>

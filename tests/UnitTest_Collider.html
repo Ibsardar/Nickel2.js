@@ -1,0 +1,277 @@
+<!--
+    Nickel2 Template File (quick start)
+--->
+
+<!DOCTYPE HTML>
+
+<html lang="en-US">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Template</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js">
+    </script>
+    <script src = "N2Base.js">
+    </script>
+    <script src = "Nickel2.js">
+    </script>
+    <!-- removes favicon.ico error -->
+    <link rel="shortcut icon" href="">
+</head>
+
+<body>
+    <div id="main">
+    </div>
+</body>
+</html>
+
+<script>
+    // Init Objects:
+    
+    // Game
+    var Game = new Viewport('main');
+    Game.set_bg_color('white');
+    Game.set_size(800,600);
+    
+    // Sprites
+    // ...........HERE.......................................................................... (test & fix collision hulls)
+    
+    // Shapes
+    var pTriangle  = new SimplePoly(Game, [[100,0], [13,150], [187,150]]);
+    var pTriangle2 = new SimplePoly(Game, [[100,0], [13,150], [187,150]]);
+    var pSquare    = new SimplePoly(Game, [[171, 29], [29, 29], [29, 171], [171, 171]]);
+    var pPentagon  = new SimplePoly(Game, [[100, 0], [5, 69], [41, 181], [159, 181], [195, 69]]);
+    var pHeptagon  = new SimplePoly(Game, [[100, 70],[77, 81],[71, 107],[87, 127],[113, 127],[129, 107],[123, 81]]);
+    var cCircle    = new SimpleCircle(Game, 45);
+    var cCircle2   = new SimpleCircle(Game, 70);
+    var lLine      = new SimpleLine(Game, 0, 0);
+    var lRay       = new SimpleLine(Game, 0, 0);
+    
+    // stylize
+    pTriangle.stroke_color = 'GREEN';
+    pTriangle2.stroke_color = 'LIGHTGREEN';
+    pSquare.stroke_color = 'DARKBLUE';
+    pPentagon.stroke_color = 'CYAN';
+    pHeptagon.stroke_color = 'ORANGE';
+    cCircle.stroke_color = 'PURPLE';
+    cCircle2.stroke_color = 'PURPLE';
+    cCircle2.fill_color = 'PINK';
+    lLine.stroke_color = 'RED';
+    lLine.stroke_width = 2;
+    lRay.stroke_color = 'YELLOW';
+    
+    // state init
+    cCircle.set_center([100,100]);
+    cCircle2.set_center([100,100]);
+    lLine.hide();
+    lRay.hide();
+    
+    // controls init
+    var selected = pTriangle;
+    let lines = [];
+    let track_lines = [];
+    
+    // other init
+    let polys = [pTriangle, pTriangle2, pSquare, pPentagon, pHeptagon];
+    
+    // Game Loop:
+    Nickel.update = function() {
+        
+        // controls:
+        // - selection
+        if (Game.key_upped == Nickel.KEYCODES.K_1) {
+            selected = pTriangle;
+            console.log("Triangle selected.");
+        } else if (Game.key_upped == Nickel.KEYCODES.K_2) {
+            selected = pSquare;
+            console.log("Square selected.");
+        } else if (Game.key_upped == Nickel.KEYCODES.K_3) {
+            selected = pPentagon;
+            console.log("Pentagon selected.");
+        } else if (Game.key_upped == Nickel.KEYCODES.K_4) {
+            selected = pHeptagon;
+            console.log("Heptagon selected.");
+        } else if (Game.key_upped == Nickel.KEYCODES.K_5) {
+            selected = cCircle;
+            console.log("Small Circle selected.");
+        } else if (Game.key_upped == Nickel.KEYCODES.K_6) {
+            selected = cCircle2;
+            console.log("Big Circle selected.");
+        } else if (Game.key_upped == Nickel.KEYCODES.K_7) {
+            selected = 123;
+            console.log("Lines selected.");
+        }
+        // - movement
+        if (selected != 123) {
+            var spd = 17;
+            var spd2=0;
+            var spd3=0;
+            if (Game.key_curr == Nickel.KEYCODES.RIGHTARROW){
+                selected.shift_pos(spd,0);
+                spd2 = spd;
+                spd3 = 0;
+            }
+            if (Game.key_curr == Nickel.KEYCODES.LEFTARROW){
+                selected.shift_pos(-spd,0);
+                spd2 = -spd;
+                spd3 = 0;
+            }
+            if (Game.key_curr == Nickel.KEYCODES.UPARROW){
+                selected.shift_pos(0,-spd);
+                spd2 = 0;
+                spd3 = -spd;
+            }
+            if (Game.key_curr == Nickel.KEYCODES.DOWNARROW){
+                selected.shift_pos(0,spd);
+                spd2 = 0;
+                spd3 = spd;
+            }
+            // make sure lines are hidden
+            lLine.hide();
+            lRay.hide();
+            Game.reset_mouse_upped();
+            Game.reset_mouse();
+            
+            // CIRCLE v CIRCLE RESOLUTION
+            cCircle.fill_color = "WHITE";
+            cCircle2.fill_color = "PINK";
+            if (selected.id == cCircle.id || selected.id == cCircle2.id || true) {
+                if (Collision_Detector.collides_circle_circle(cCircle, cCircle2, true, true, 1, 2)) {
+                    cCircle.fill_color = "RED";
+                    cCircle2.fill_color = "RED";
+                }
+            }
+            
+            // POLYGON v POLYGON RESOLUTION
+            var polyA = pSquare;
+            var polyB = pHeptagon;
+            polyA.fill_color = "WHITE";
+            polyB.fill_color = "PINK";
+            if (selected.id == polyA.id || selected.id == polyB.id || true) {
+                var output = Collision_Detector.collides_poly_poly(polyA, polyB, true, true, 4, 1);
+                if (output) {
+                    polyA.fill_color = "RED";
+                    polyB.fill_color = "RED";
+                }
+            }
+            
+            // POLYGON v CIRCLE RESOLUTION
+            var polyC = pSquare;
+            var circC = cCircle;
+            polyC.fill_color = "WHITE";
+            circC.fill_color = "PINK";
+            if (selected.id == polyC.id || selected.id == circC.id || true) {
+                pSquare.shift_pos(2,1);
+                cCircle.shift_pos(-1,2);
+                pSquare.rotate_around(10,pSquare.get_center());
+                var output = Collision_Detector.collides_poly_circle(polyC, circC, true, true, 1, 4, [2,1], [-1,2]);
+                if (output) {
+                    polyC.fill_color = "RED";
+                    circC.fill_color = "RED";
+                }
+            }
+        // - creation
+        } else {
+            // start
+            if (Game.mouse_curr == 0 && !lLine.is_visible()) {
+                lLine.show();
+                lLine.set_pos([Game.mouse_x, Game.mouse_y]);
+                lLine.set_end([Game.mouse_x, Game.mouse_y]);
+                lRay.show();
+                lRay.set_pos([Game.mouse_x, Game.mouse_y]);
+                lRay.set_end([Game.mouse_x, Game.mouse_y]);
+            }
+
+            // drag
+            if (Game.mouse_curr == 0 && lLine.is_visible()) {
+                lLine.set_end([Game.mouse_x, Game.mouse_y]);
+                lRay.set_pos(lLine.get_end());
+                lRay.set_dir([lLine.dx*1000, lLine.dy*1000]); // shoot out ray 1000x larger than line
+                
+                // check collision with all burned lines
+                var ray = new RayCast(lLine.get_pos(), 0);
+                ray.rot = lLine.get_rot();
+                for (var i in lines) {
+                    lines[i].stroke_color = 'BLACK';
+                    if (Collision_Detector.collides_line_line(lLine, lines[i])) {
+                        lines[i].stroke_color = 'RED'; //'YELLOWGREEN';
+                    } else {
+                        // line vs poly
+                        for (let polygon of polys) {
+                            if (Collision_Detector.collides_poly_line(polygon, lLine)) {
+                                polygon.stroke_color = 'RED';
+                            } else {
+                                polygon.stroke_color = 'BLACK';
+                            }
+                        }
+                        // line vs circle
+                        if (Collision_Detector.collides_circle_line(cCircle, lLine)) {
+                            cCircle.stroke_color = 'RED';
+                        } else {
+                            cCircle.stroke_color = 'BLACK';
+                        }
+                        // poly vs ray
+                        for (var j in polys) {
+                            if (Collision_Detector.collides_poly_ray(polys[j], ray)) {
+                                polys[j].stroke_color = 'PURPLE';
+                                polys[j].stroke_width = 4;
+                            } else {
+                                polys[j].stroke_color = 'BLACK';
+                                polys[j].stroke_width = 2;
+                            }
+                        }
+                        // line vs ray, line
+                        if (Collision_Detector.collides_ray_line(ray, lines[i])) {
+                            lines[i].stroke_color = 'GOLD'; //'GAINSBORO';
+                        } else {
+                            // create track lines from endpts of untouched lines
+                            // to closest point on current line
+                            var closest0 = Collision_Detector._closest_pt_on_ray_to_pt(ray, lines[i].get_pos()); //Collision_Detector._closest_pt_on_lineseg_to_pt(lLine, lines[i].get_pos());
+                            var closest1 = Collision_Detector._closest_pt_on_ray_to_pt(ray, lines[i].get_end()); //Collision_Detector._closest_pt_on_lineseg_to_pt(lLine, lines[i].get_end());
+                            var track_line0 = new SimpleLine(Game, lines[i].get_pos(), closest0);
+                            var track_line1 = new SimpleLine(Game, lines[i].get_end(), closest1);
+                            track_line0.stroke_color = 'LIGHTGREY';
+                            track_line1.stroke_color = 'LIGHTGREY';
+                            track_lines.push(track_line0);
+                            track_lines.push(track_line1);
+                        }
+                    }
+                }
+            }
+
+            // finish
+            if (Game.mouse_upped == 0 && lLine.is_visible()) {
+                lLine.hide();
+                lRay.hide();
+                Game.reset_mouse_upped();
+                
+                // burn line
+                var line = new SimpleLine(Game, lLine.get_pos(), lLine.get_end());
+                line.stroke_color = 'BLACK';
+                line.stroke_width = lLine.stroke_width;
+                lines.push(line);
+            }
+        }
+        
+        // clear canvas, key history
+        Game.reset_key_upped();
+        Game.clear();
+        
+        // update
+        pTriangle.update();
+        pTriangle2.update();
+        pSquare.update();
+        pPentagon.update();
+        pHeptagon.update();
+        cCircle.update();
+        cCircle2.update();
+        lLine.update();
+        lRay.update();
+        for (let line of lines) line.update();
+        for (let tline of track_lines) tline.update();
+        track_lines = [];
+    }
+    
+    // Start Game:
+    Game.run();
+</script>
