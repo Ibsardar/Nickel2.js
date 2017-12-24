@@ -643,7 +643,7 @@ var Collision_Detector = {
                 you.shift_pos(min_translation_vec[0] * -1, min_translation_vec[1] * -1);
                 
                 // return a pair of push vectors for me and you
-                return [[0,0],min_translation_vec];
+                return [[0,0], min_translation_vec];
 
             // resolve both partially
             } else if (resolve_me && resolve_you) {
@@ -911,7 +911,7 @@ var Collision_Detector = {
                     // push both of us
                     me.shift_pos(my_resolve[0], my_resolve[1]);
                     you.shift_pos(your_resolve[0], your_resolve[1]);
-
+                    
                     // return a pair of push vectors for me and you
                     return [my_resolve,your_resolve];
                 }
@@ -927,10 +927,9 @@ var Collision_Detector = {
         // shift back
         velocity_shift(-1);
         
-        // collision if distance between centers
+        // no collision even if distance between centers
         // is EQUAL to sum of radii of me and you
-        // (else, absolutely no collision)
-        return dist == sum ? true : false;
+        return false;
     }
     
     ,
@@ -1619,7 +1618,7 @@ function Viewport(html_canvas_element_id) {
 ////////////////////////////////////////////
 ///   SIMPLE POLY   ////////////////////////
 ////////////////////////////////////////////
-function SimplePoly(scene, vertices, is_equiangular=false) {
+function SimplePoly(scene, vertices, is_equiangular=false, track_point=null) {
 
     // general
     this.id = Nickel.UTILITY.assign_id();
@@ -1641,6 +1640,10 @@ function SimplePoly(scene, vertices, is_equiangular=false) {
 
     // pos of each vertex
     this.vertices = vertices;
+    
+    // pos of extra point to be tracked
+    // (helps with origin related computation)
+    this.tracker = track_point;
 
     // other
     this.dead = false;
@@ -1738,6 +1741,20 @@ function SimplePoly(scene, vertices, is_equiangular=false) {
 
     }
     
+    this.get_tracker = function() {
+        //--    Returns track point
+        //--
+        
+        return this.tracker;
+    }
+    
+    this.set_tracker = function(track_point) {
+        //--    Sets a new track point
+        //--
+        
+        this.tracker = track_point;
+    }
+    
     this.get_center = function() {
         //--    Returns average vertex position
         //--
@@ -1771,6 +1788,13 @@ function SimplePoly(scene, vertices, is_equiangular=false) {
         
         this.x = this.vertices[0][0];
         this.y = this.vertices[0][1];
+        
+        if (this.tracker) {
+            this.tracker[0] += shiftx;
+            this.tracker[1] += shifty;
+        }
+        
+        //console.log(this.tracker);
     }
     
     // TODO: TEST
@@ -1788,6 +1812,11 @@ function SimplePoly(scene, vertices, is_equiangular=false) {
         
         this.x = point[0];
         this.y = point[1];
+        
+        if (this.tracker) {
+            this.tracker[0] += diff[0];
+            this.tracker[1] += diff[1];
+        }
     }
     
     this.scale_around = function(scale, point) {
@@ -1808,6 +1837,11 @@ function SimplePoly(scene, vertices, is_equiangular=false) {
         
         this.x = this.vertices[0][0];
         this.y = this.vertices[0][1];
+        
+        if (this.tracker) {
+            this.tracker[0] = scalex * (this.tracker[0] - point[0]) + point[0];
+            this.tracker[1] = scaley * (this.tracker[1] - point[1]) + point[1];
+        }
     }
     
     this.rotate_around = function(degrees, point) {
@@ -1827,6 +1861,14 @@ function SimplePoly(scene, vertices, is_equiangular=false) {
         
         this.x = this.vertices[0][0];
         this.y = this.vertices[0][1];
+        
+        if (this.tracker) {
+            
+            var tmpx = this.tracker[0] - point[0];
+            var tmpy = this.tracker[1] - point[1];
+            this.tracker[0] = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
+            this.tracker[1] = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
+        }
     }
 }//end SimplePoly
 
@@ -2032,7 +2074,7 @@ function SimpleEllipse(scene, radius_h, radius_v) {
 ////////////////////////////////////////////
 ///   SIMPLE CIRCLE   //////////////////////
 ////////////////////////////////////////////
-function SimpleCircle(scene, radius) {
+function SimpleCircle(scene, radius, track_point=null) {
 
     // general
     this.id = Nickel.UTILITY.assign_id();
@@ -2054,6 +2096,10 @@ function SimpleCircle(scene, radius) {
     // pos (initially hide the circle)
     this.cx = -radius;
     this.cy = -radius;
+    
+    // pos of extra point to be tracked
+    // (helps with origin related computation)
+    this.tracker = track_point;
 
     // other
     this.dead = false;
@@ -2147,6 +2193,20 @@ function SimpleCircle(scene, radius) {
 
     }
     
+    this.get_tracker = function() {
+        //--    Returns track point
+        //--
+        
+        return this.tracker;
+    }
+    
+    this.set_tracker = function(track_point) {
+        //--    Sets a new track point
+        //--
+        
+        this.tracker = track_point;
+    }
+    
     this.get_center = function() {
         //--    Returns center of circle
         //--
@@ -2158,6 +2218,11 @@ function SimpleCircle(scene, radius) {
         //--    Centers self onto a position
         //--
         
+        if (this.tracker) {
+            this.tracker[0] += new_center[0] - this.cx;
+            this.tracker[1] += new_center[1] - this.cy;
+        }
+        
         this.cx = new_center[0];
         this.cy = new_center[1];
     }
@@ -2168,6 +2233,11 @@ function SimpleCircle(scene, radius) {
         
         this.cx += shiftx;
         this.cy += shifty;
+        
+        if (this.tracker) {
+            this.tracker[0] += shiftx;
+            this.tracker[1] += shifty;
+        }
     }
     
     this.set_pos = function(point) {
@@ -2175,8 +2245,7 @@ function SimpleCircle(scene, radius) {
         //--    is at the given point (proxy to 'set_center')
         //--
         
-        this.cx = point[0];
-        this.cy = point[1];
+        this.set_center(point);
     }
     
     this.scale_around = function(scale, point) {
@@ -2195,6 +2264,11 @@ function SimpleCircle(scene, radius) {
         this.cx = scalex * (this.cx - point[0]) + point[0];
         this.cy = scaley * (this.cy - point[1]) + point[1];
         this.radius *= scaler;
+        
+        if (this.tracker) {
+            this.tracker[0] = scalex * (this.tracker[0] - point[0]) + point[0];
+            this.tracker[1] = scaley * (this.tracker[1] - point[1]) + point[1];
+        }
     }
     
     this.rotate_around = function(degrees, point) {
@@ -2207,6 +2281,14 @@ function SimpleCircle(scene, radius) {
         var tmpy = this.cy - point[1];
         this.cx = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
         this.cy = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
+        
+        if (this.tracker) {
+            
+            var tmpx = this.tracker[0] - point[0];
+            var tmpy = this.tracker[1] - point[1];
+            this.tracker[0] = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
+            this.tracker[1] = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
+        }
     }
 }//end SimpleCircle
 
@@ -2682,7 +2764,7 @@ function BoundingBox(sprite) {
 ////////////////////////////////////////////
 ///   COLLIDER HULL   //////////////////////
 ////////////////////////////////////////////
-function ColliderHull(sprite) {
+function ColliderHull(sprite, approximate=true) {
     
     // TODO: TEST EXTENSIVELY
     // (this, simple shapes, and some collision_detection functions)
@@ -2695,23 +2777,29 @@ function ColliderHull(sprite) {
     this.parent = sprite;
     
     // simple shape of hull
-    // Default: create rectangle matching the sprite's basic dimensions
-    this.shape = new SimplePoly(sprite.scene,
-                                [sprite.get_pos(),
-                                 [sprite.get_x()+sprite.get_w(),sprite.get_y()],
-                                 [sprite.get_x()+sprite.get_w(),sprite.get_y()+sprite.get_h()],
-                                 [sprite.get_x(),sprite.get_y()+sprite.get_h()]],
-                                true);
+    if (approximate) {
+        
+        // get coordinates, dimensions (relative to sprite's origin) ///////////////                   HERE
+        var tl = this.parent.get_topleft();
+        var tr = this.parent.get_topright();
+        var bl = this.parent.get_bottomleft();
+        var br = this.parent.get_bottomright();
+        
+        // create rectangle matching the sprite's basic dimensions
+        this.shape = new SimplePoly(this.parent.scene,
+                                    [tl,tr,br,bl],
+                                    true, this.parent.get_pos2());
+    }
     
     // origin relative to sprite's origin
-    // Default: ignore sprite origin (use topleft of sprite as the origin)
     // Ex: 0,0 would mean this hull will rotate around sprite's origin on update
-    this.origin = [-1 * sprite.get_origin()[0], -1 * sprite.get_origin()[1]];
+    //this.origin = [-1 * sprite.get_origin()[0], -1 * sprite.get_origin()[1]];..........nope!    (junk maybe..)
+    //this.origin = [0,0];
     
     // keep track of how much shape has rotated and scaled
-    this.rotated = 0;
-    this.scaledx = 1;
-    this.scaledy = 1;
+    this.rotated = this.parent.get_rot();
+    this.scaledx = this.parent.get_scalex();
+    this.scaledy = this.parent.get_scaley();
     
     // this limits the update function to be called once per frame
     this.updated = false;
@@ -2725,6 +2813,7 @@ function ColliderHull(sprite) {
         this.updated = false;
     }
     
+    // TODO: SYNC ERRORS - SHAPE NOT ALIGNING CORRECTLY WITH SPRITE
     // TODO: DON'T ONLY USE SCALEX - USE BOTH X AND Y (will have to handle special case for circles)
     // TODO: FIX SCALE ERRORS (NaN VALUES APPEAR ONCE SCALE BECOMES 0)
     this.update_transformations = function() {
@@ -2739,13 +2828,16 @@ function ColliderHull(sprite) {
         if (!this.updated) {
             this.updated = true;
             var par_pos = this.parent.get_pos2();
-            var hul_pos = [par_pos[0]+this.origin[0], par_pos[1]+this.origin[1]];
+            var hul_pos = this.shape.get_tracker();
+            var diff = [par_pos[0] - hul_pos[0], par_pos[1] - hul_pos[1]];
             
             // translation
-            this.shape.set_pos(hul_pos);
+            this.shape.shift_pos(diff[0], diff[1]);
+            
+            //console.log(this.shape.get_tracker());
             
             // rotation
-            this.shape.rotate_around(this.parent.get_rot() - this.rotated, hul_pos);
+            this.shape.rotate_around(this.parent.get_rot() - this.rotated, par_pos);
             
             // scaling
             // (circle cannot scale differently on x and y axis, but polys can)
@@ -2754,9 +2846,9 @@ function ColliderHull(sprite) {
             var sx = this.parent.get_scalex();
             var sy = this.parent.get_scaley();
             if (this.shape.type == "SimplePoly") {
-                this.shape.scale_around2(sx / this.scaledx, sy / this.scaledy, hul_pos);
+                this.shape.scale_around2(sx / this.scaledx, sy / this.scaledy, par_pos);
             } else if (this.shape.type == "SimpleCircle") {
-                this.shape.scale_around(sx / this.scaledx, hul_pos);
+                this.shape.scale_around(sx / this.scaledx, par_pos);
             }
             
             // remember last updated values
@@ -2766,11 +2858,30 @@ function ColliderHull(sprite) {
         }
     }
     
+    this.approximate_shape = function() {
+        //--    Approximates a shape to bound the sprite with
+        //--
+        
+        // get coordinates, dimensions (relative to sprite's origin)
+        var tl = this.parent.get_topleft();
+        var tr = this.parent.get_topright();
+        var bl = this.parent.get_bottomleft();
+        var br = this.parent.get_bottomright();
+        
+        // create rectangle matching the sprite's basic dimensions
+        this.shape = new SimplePoly(this.parent.scene,
+                                    [tl,tr,br,bl],
+                                    true, this.parent.get_pos2());
+    }
+    
     this.set_shape = function(simple_shape) {
         //--    Sets the shape of the hull
+        //--    Parent's origin is default tracker if none is set
         //--
         
         this.shape = simple_shape;
+        if (!simple_shape.get_tracker())
+            simple_shape.set_tracker(this.parent.get_pos2());
         this.updated = false;
         this.update_transformations();
     }
@@ -2884,21 +2995,26 @@ function ColliderHull(sprite) {
     
     // TODO
     this.resolve_collision = function(obj,resolve_me=true,resolve_you=true,my_heaviness=1,
-                                      ur_heaviness=1,my_velocity=null,ur_velocity=null) {
+                                      ur_heaviness=1,my_velocity=null,ur_velocity=null,
+                                      my_rotation=null, ur_rotation=null) {
         //--    Same as detect_collision but also resolves
         //--
-        
+        var debug=false;
         // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
+        
+        //console.log(this.shape.get_tracker() + " AND " + this.parent.get_pos2() + " VS:"); //junk
         
         // first, make sure hull is up to date with parent sprite
         this.update_transformations();
+        
+        //console.log(this.shape.get_tracker() + " AND " + this.parent.get_pos2()); //junk
         
         // me = circle
         if (this.shape.type == "SimpleCircle") {
         
             // you = point
-            if (Nickel.UTILITY.is_array(obj)) {
-             
+            if (Nickel.UTILITY.is_array(obj)) {             if (debug) console.log("circle -> pt");
+                
                 return Collision_Detector.collides_circle_point(this.shape, obj);
                 
             // you = hull
@@ -2908,56 +3024,64 @@ function ColliderHull(sprite) {
                 obj.update_transformations();
                 
                 // you = circle hull
-                if (obj.shape.type == "SimpleCircle") {
+                if (obj.shape.type == "SimpleCircle") {             if (debug) console.log("circle -> hull.circle");
                     
                     return Collision_Detector.collides_circle_circle(this.shape, obj.shape,
                                                                      resolve_me, resolve_you,
                                                                      my_heaviness, ur_heaviness,
-                                                                     my_velocity, ur_velocity);
+                                                                     my_velocity, ur_velocity,
+                                                                     my_rotation, ur_rotation);
                 
                 // you = poly hull
-                } else if (obj.shape.type == "SimplePoly") {
+                } else if (obj.shape.type == "SimplePoly") {             if (debug) console.log("circle -> hull.poly");
                 
                     var res = Collision_Detector.collides_poly_circle(obj.shape, this.shape,
                                                                    resolve_you, resolve_me,
                                                                    ur_heaviness, my_heaviness,
-                                                                   ur_velocity, my_velocity);
+                                                                   ur_velocity, my_velocity,
+                                                                   my_rotation, ur_rotation);
+                    if (!res)
+                        return res;
                     return [res[1], res[0]]; // order: me, you
                 }
                 
             // you = poly
-            } else if (obj.type == "SimplePoly") {
+            } else if (obj.type == "SimplePoly") {             if (debug) console.log("circle -> poly");
 
                 var res = Collision_Detector.collides_poly_circle(obj, this.shape,
                                                                   resolve_you, resolve_me,
                                                                   ur_heaviness, my_heaviness,
-                                                                  ur_velocity, my_velocity);
+                                                                  ur_velocity, my_velocity,
+                                                                  my_rotation, ur_rotation);
+                if (!res)
+                    return res;
                 return [res[1], res[0]]; // order: me, you
                 
             // you = circle
-            } else if (obj.type == "SimpleCircle") {
+            } else if (obj.type == "SimpleCircle") {             if (debug) console.log("circle -> circle");
                 
                 return Collision_Detector.collides_circle_circle(this.shape, obj,
                                                                  resolve_me, resolve_you,
                                                                  my_heaviness, ur_heaviness,
-                                                                 my_velocity, ur_velocity);
+                                                                 my_velocity, ur_velocity,
+                                                                 my_rotation, ur_rotation);
                 
             // you = line
-            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
+            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {             if (debug) console.log("circle -> line");
                 
                 return Collision_Detector.collides_circle_line(this.shape, obj);
                 
             // you = ray
-            } else if (obj.type == "RayCast") {
+            } else if (obj.type == "RayCast") {             if (debug) console.log("circle -> ray");
                 
                 return Collision_Detector.collides_circle_ray(this.shape, obj);
             }
-                
+                             if (debug) console.log("circle -> UNKOWN !!!!!!!!!!!!!!!!");
         // me = poly
         } else if (this.shape.type == "SimplePoly") {
             
             // you = point
-            if (Nickel.UTILITY.is_array(obj)) {
+            if (Nickel.UTILITY.is_array(obj)) {             if (debug) console.log("poly -> pt");
                 return Collision_Detector.collides_poly_point(this.shape, obj);
                 
             // you = hull
@@ -2967,48 +3091,53 @@ function ColliderHull(sprite) {
                 obj.update_transformations();
                 
                 // you = circle hull
-                if (obj.shape.type == "SimpleCircle") {
+                if (obj.shape.type == "SimpleCircle") {             if (debug) console.log("poly -> hull.circle");
                     
                     return Collision_Detector.collides_poly_circle(this.shape, obj.shape,
                                                                    resolve_me, resolve_you,
                                                                    my_heaviness, ur_heaviness,
-                                                                   my_velocity, ur_velocity);
+                                                                   my_velocity, ur_velocity,
+                                                                   my_rotation, ur_rotation);
                 
                 // you = poly hull
-                } else if (obj.shape.type == "SimplePoly") {
+                } else if (obj.shape.type == "SimplePoly") {             if (debug) console.log("poly -> hull.poly");
                 
                     return Collision_Detector.collides_poly_poly(this.shape, obj.shape,
                                                                  resolve_me, resolve_you,
                                                                  my_heaviness, ur_heaviness,
-                                                                 my_velocity, ur_velocity);
+                                                                 my_velocity, ur_velocity,
+                                                                 my_rotation, ur_rotation);
                 }
                 
             // you = poly
-            } else if (obj.type == "SimplePoly") {
+            } else if (obj.type == "SimplePoly") {             if (debug) console.log("poly -> poly");
 
                 return Collision_Detector.collides_poly_poly(this.shape, obj,
                                                              resolve_me, resolve_you,
                                                              my_heaviness, ur_heaviness,
-                                                             my_velocity, ur_velocity);
+                                                             my_velocity, ur_velocity,
+                                                             my_rotation, ur_rotation);
                 
             // you = circle
-            } else if (obj.type == "SimpleCircle") {
+            } else if (obj.type == "SimpleCircle") {             if (debug) console.log("poly -> circle");
                 
                 return Collision_Detector.collides_poly_circle(this.shape, obj,
                                                                resolve_me, resolve_you,
                                                                my_heaviness, ur_heaviness,
-                                                               my_velocity, ur_velocity);
+                                                               my_velocity, ur_velocity,
+                                                               my_rotation, ur_rotation);
                 
             // you = line
-            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
+            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {             if (debug) console.log("poly -> line");
                 
                 return Collision_Detector.collides_poly_line(this.shape, obj);
                 
             // you = ray
-            } else if (obj.type == "RayCast") {
+            } else if (obj.type == "RayCast") {             if (debug) console.log("poly -> ray");
                 
                 return Collision_Detector.collides_poly_ray(this.shape, obj);
             }
+                         if (debug) console.log("poly -> UNKNOWN!!!!!!!!!!!!!!!!!!");
         }
         
         // me = unknown
@@ -3019,9 +3148,10 @@ function ColliderHull(sprite) {
 
 
 ////////////////////////////////////////////
-///   SPRITE   /////////////////////////////
+///   SPRITE   /////////////////////////////    TODO: FIX LAST_ROT MECHANISM (MAYBE ONLY CHANGE DR THEN THAT WILL BE THE TOTAL ROTATION FOR THE FRAME)
 ////////////////////////////////////////////
-function Sprite(scene, image_data, has_bbox=true) {
+function Sprite(scene, image_data, has_bbox=true,
+                 collisiion_hull=null, approximate=true) {
 
 
     // --
@@ -3049,8 +3179,8 @@ function Sprite(scene, image_data, has_bbox=true) {
         this.bbox = new BoundingBox(this);
     }
     
-    // init collision hull to null
-    this.hull = null;
+    // init collision hull
+    this.hull = collisiion_hull;
 
     // size
     this.width = image_data.w;
@@ -3081,8 +3211,11 @@ function Sprite(scene, image_data, has_bbox=true) {
     this.rot = 0; // angle of sprite's movement
     this.dr = 0;
     this.max_rot = 0;
-    this.last_rot = 0; // last turn displacement
     this.origin = [0,0]; // default topleft
+    
+    // history
+    this.curr_rot = 0; // current turn displacement
+    this.last_rot = 0; // last turn displacement
 
     // debug
     this.is_debug = false
@@ -3121,6 +3254,9 @@ function Sprite(scene, image_data, has_bbox=true) {
         
         // updates collision hull
         this.hull.update();
+        
+        // update history
+        this.update_records();
 
         // user custom update
         this.update_more();
@@ -3226,9 +3362,6 @@ function Sprite(scene, image_data, has_bbox=true) {
         // update difference in x and y position
         this.x = this.x + this.dx + tmp_dx;
         this.y = this.y + this.dy + tmp_dy;
-
-        // reset
-        //this.dx = this.dy = 0;
     }
 
     this.bound = function() {
@@ -3259,6 +3392,16 @@ function Sprite(scene, image_data, has_bbox=true) {
         //--    Called in update. Meant to be over-ridden.
         //--
 
+    }
+    
+    this.update_records = function() {
+        //--    Updates history variables from the
+        //--    last update
+        //--
+        
+        // rotation
+        this.last_rot = this.curr_rot;
+        this.curr_rot = this.dr;
     }
 
 
@@ -3587,7 +3730,7 @@ function Sprite(scene, image_data, has_bbox=true) {
     }
 
 
-    // +++  DELETE THIS GARBAGE MAN (CAREFULLY) ~~~~~~~~~~~  (MAYBE NOT GET VELOCITY?)
+    // +++  DELETE THIS GARBAGE MAN (CAREFULLY) ~~~~~~~~~~~  (KEEP GET_VELOCITY THO)
     // +++ > force-related:
 
 
@@ -3688,10 +3831,18 @@ function Sprite(scene, image_data, has_bbox=true) {
         return this.max_rot;
     }
 
+    this.get_curr_rot = function() {
+        //--    Returns the current turn displacement
+        //--    applied thus far
+        //--    (set methods do not count)
+        //--
+
+        return this.curr_rot;
+    }
+
     this.get_last_rot = function() {
-        //--    Returns the last turn displacement made by any
-        //--    of the following functions:
-        //--    turn_to, offset_turn, or offset_rotation
+        //--    Returns the last turn displacement
+        //--    (set methods do not count)
         //--
 
         return this.last_rot;
@@ -4111,10 +4262,11 @@ function Sprite(scene, image_data, has_bbox=true) {
         return this.hull.detect_collision(target);
     }
     
-    // TODO: OPTIMIZE
+    // TODO: OPTIMIZE, ADD OPTION TO USE ROTATION FOR PREDICTION <--- HERE !!!
     this.resolve_with = function(target, layer_check=true, resolve_me=true, resolve_you=true,
-                                 my_heaviness=1, ur_heaviness=1, resolve_velocity=false,
-                                 my_velocity=null, ur_velocity=null) {
+                                 my_heaviness=1, ur_heaviness=1,
+                                 my_velocity=null, ur_velocity=null,
+                                 my_rotation=null, ur_rotation=null) {
         //--    Same as Sprite.colliding_with but also
         //--    resolves collisions.
         //--
@@ -4134,14 +4286,16 @@ function Sprite(scene, image_data, has_bbox=true) {
                 resolve = this.hull.resolve_collision(target.hull,
                                                    resolve_me, resolve_you,
                                                    my_heaviness, ur_heaviness,
-                                                   my_velocity, ur_velocity);
+                                                   my_velocity, ur_velocity,
+                                                   my_rotation, ur_rotation);
             // same layer check
             } else if (layer_check && (target.get_layer() == this.get_layer())) {
                 
                 resolve = this.hull.resolve_collision(target.hull,
                                                    resolve_me, resolve_you,
                                                    my_heaviness, ur_heaviness,
-                                                   my_velocity, ur_velocity);
+                                                   my_velocity, ur_velocity,
+                                                   my_rotation, ur_rotation);
             // different layer
             } else {
                 return false;
@@ -4160,7 +4314,8 @@ function Sprite(scene, image_data, has_bbox=true) {
             resolve = this.hull.resolve_collision(target,
                                                resolve_me, resolve_you,
                                                my_heaviness, ur_heaviness,
-                                               my_velocity, ur_velocity);
+                                               my_velocity, ur_velocity,
+                                               my_rotation, ur_rotation);
         }
         
         // sync resolution with self as well
@@ -4192,7 +4347,7 @@ function Sprite(scene, image_data, has_bbox=true) {
         else
             var _img_data = {w:this.get_w_orig(), h:this.get_h_orig()};
 
-        var spr = new Sprite(this.scene, _img_data, !!this.bbox);
+        var spr = new Sprite(this.scene, _img_data, !!this.bbox, null, !!this.hull);
         
         spr.update();
         return spr;
@@ -4282,7 +4437,7 @@ function Sprite(scene, image_data, has_bbox=true) {
         this.rot += angle;
 
         // also record the turn
-        this.last_rot = angle;
+        this.curr_rot += angle;
     }
 
     this.offset_turn = function(angle,origin) {
@@ -4295,7 +4450,7 @@ function Sprite(scene, image_data, has_bbox=true) {
         this.dir += angle;
 
         // also record the turn
-        this.last_rot = angle;
+        this.curr_rot += angle;
     }
 
     this.rotate_around = function(angle,origin) {
@@ -4390,7 +4545,7 @@ function Sprite(scene, image_data, has_bbox=true) {
 
         // turn and record angle displacement to last_rot
         this.set_turn(this.get_rot() + ang);
-        this.last_rot = ang;
+        this.curr_rot += ang;
     }
 
     this.turn_to = function(item,instant=true,buffer=0) {
@@ -4454,17 +4609,17 @@ function Sprite(scene, image_data, has_bbox=true) {
 
         // turn and record angle displacement to last_rot
         this.set_turn(this.get_rot() + ang);
-        this.last_rot = ang;
+        this.curr_rot += ang;
     }
 
     
     // --
-    // ------- POST-CREATION INIT methods ------------------------
+    // ------- POST-CREATION INIT actions ------------------------
     // --
     
     
-    // init default hull
-    this.hull = new ColliderHull(this);
+    // init default hull if hull is null
+    if (!this.hull && approximate) this.hull = new ColliderHull(this);
     
 }//end Sprite
 

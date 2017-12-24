@@ -66,11 +66,16 @@
     var FISHDATA2 = {img:'fish2.png',w:64,h:64};
     var ARROWDATA = {img:'arrow.png',w:10,h:22};
     var SELDATA = {img:'poo.png',w:750,h:650};
-    var SHIPDATA = {scene:Game,img_data:{img:'arrow4.png',w:22,h:10},max_rot:2};
+    var SHIPDATA = {scene:Game,
+                    img_data:{img:'arrow2.png',w:22,h:10},
+                    hull_exists:true,
+                    hull:null,
+                    max_rot:2
+                   };
     var ARROW3DATA = {img:"arrow3.png",w:22,h:10};
     var STARTDATA = {img:'start.png',w:40,h:40};
     var ENDDATA = {img:'end.png',w:40,h:40};
-    var A = new Sprite(Game,Adata);
+    var A = new Sprite(Game,Adata,true,null,true);
     var B = new Sprite(Game,Bdata);
     var C = new Sprite(Game,Cdata);
     var D = new Sprite(Game,Ddata);
@@ -98,7 +103,7 @@
     Fool.set_scale(1);
     // make the wall sprite
     var WallData = {img:'wall.png',w:40,h:40};
-    var Wall = new Sprite(Game,WallData,true);
+    var Wall = new Sprite(Game,WallData,true,null,true);
     Wall.bound = function() {};
     Wall.set_scale(50 / WallData.w);
     
@@ -404,7 +409,7 @@
         f.set_scale(0.3);
         //f.set_speed(0.5);
         f.bbox.update(); // or just f.update()...
-        f.origin = [f.get_w()/2,f.get_h()/2];  /// crap, TIME TO REVERT A TON OF STUFF ***HERE***TODO***
+        f.origin = [f.get_w()/2,f.get_h()/2];  /// crap...i forgot why this is crap?
             
         // put fish on tiles
         var x = path[i].x;
@@ -508,7 +513,7 @@
             FOV_Ship.destroy();
     }**/
     
-    /***
+    //***
     // TEST #2
     // prepare Fish and its FOV
     Fish.update();
@@ -528,12 +533,13 @@
     
     // prepare Ships and their FOVs as well as the flee object
     Ships = [];
-    for (var i = 0; i < 100; i++) {
+    for (var i = 0; i < 50; i++) {
         
         var aim = [0,0];
         
         // rnd pos, spd
-        if (Nickel.UTILITY.random_number(0,1)) {
+        var rnd_side = Nickel.UTILITY.random_number(0,1);
+        if (rnd_side) {
             var rnd_x = Nickel.UTILITY.random_number(50,250);
             var rnd_y = Nickel.UTILITY.random_number(50,150);
             aim = [Fish.get_cx(),Fish.get_cy() - 95];
@@ -562,10 +568,22 @@
         Ship.arrived = false;
         Ship.tmp_aim = aim;
         
+        // change the hull (testing with circle hulls)
+        if (rnd_side) {
+            var circle_hull = new SimpleCircle(Game, Ship.get_w()/2);
+            circle_hull.set_center(Ship.get_pos2());
+            Ship.hull.set_shape(circle_hull);
+        }
+        
         // add Ship, FOV pair
         Ships.push([Ship,FOV_Ship]);
+        
+        // paint hull
+        Ship.hull.shape.stroke_color = 'YELLOW';
+        Ship.hull.shape.stroke_width = 4;
+        Ship.update_more = function () {this.hull.shape.update();}
     }
-    ***/
+    //***/
     /** // TEST #3
     AShips = [];
     BShips = [];
@@ -583,12 +601,12 @@
         
         // create a Ship at random loc for each team
         var AShip = new Locomotive(SHIPDATA);
-        AShip.props.max_s = rnd_spda;
+        //////////////////////////////////////////AShip.props.max_s = rnd_spda;
         AShip.set_pic(ARROW3DATA);
         AShip.set_center(rnd_xa,rnd_ya);
         AShip.set_origin_centered();
         var BShip = new Locomotive(SHIPDATA);
-        BShip.props.max_s = rnd_spdb;
+        //////////////////////////////////////////BShip.props.max_s = rnd_spdb;
         BShip.set_center(rnd_xb,rnd_yb);
         BShip.set_origin_centered();
         
@@ -601,10 +619,10 @@
         BShip.set_speed(rnd_spdb);
         
         // create & prepare FOVs
-        var FOV_AShip = new SimpleEllipse(Game, AShip.props.fov_r, AShip.props.fov_r);
+        var FOV_AShip = new SimpleEllipse(Game, 24, 24);
         FOV_AShip.stroke_color = 'yellow';
         FOV_AShip.stroke_width = 1;
-        var FOV_BShip = new SimpleEllipse(Game, BShip.props.fov_r, BShip.props.fov_r);
+        var FOV_BShip = new SimpleEllipse(Game, 24, 24);
         FOV_BShip.stroke_color = 'red';
         FOV_BShip.stroke_width = 1;
         
@@ -612,13 +630,13 @@
         AShips.push([AShip,FOV_AShip]);
         BShips.push([BShip,FOV_BShip]);
     }
-    ***/
+    //***/
     /***
     // TEST #5
     Fish.update();
     World.nav.place.at(Fish,[7,5]);
     Ships = [];
-    for (var i = 0; i < 300; i++) {
+    for (var i = 0; i < 100; i++) {
         var rnd_mx_rt = Nickel.UTILITY.random_number(150,1000) / 100;
         var rnd_xa = Nickel.UTILITY.random_number(50,750);
         var rnd_ya = Nickel.UTILITY.random_number(50,550);
@@ -653,9 +671,9 @@
     obj5.halt = true;
     obj5.skip_arrival = false;
     var path = [obj1,obj2,obj3,obj4];
-    ***/
+    //***/
     
-    // TEST #6
+    /*/ TEST #6
     var Loner = new Locomotive(SHIPDATA);
     Loner.set_pic(ARROW3DATA);
     Loner.set_origin_centered();
@@ -664,7 +682,7 @@
     Loner.update();
     Loner.set_center(400,300);
     Chasers = [];
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 50; i++) {
         var rnd_mx_rt = Nickel.UTILITY.random_number(150,1000) / 100;
         var rnd_xa = Nickel.UTILITY.random_number(50,750);
         var rnd_ya = Nickel.UTILITY.random_number(50,550);
@@ -673,6 +691,12 @@
         Ship.set_origin_centered();
         Ship.set_rot_max(5);//rnd_mx_rt);
         Ship.set_speed(0.1);
+        
+        // circular collision hull
+        //var circle_hull = new SimpleCircle(Game, Ship.get_w()/2);
+        //circle_hull.set_center([rnd_xa, rnd_ya]);
+        //Ship.hull.set_shape(circle_hull);
+        
         Chasers.push(Ship);
     }
     
@@ -686,7 +710,7 @@
     sub_radius.stroke_width = 2;
     sub_radius.cx = Game.get_w()/2;
     sub_radius.cy = Game.get_h()/2;
-    
+    //**/
     /*** / COLLISION TEST ////////////////////////////////////////////////////////////////////////////////////////
     var perf_l_l = [];
     for (var i=0; i<2000; i++) {
@@ -748,11 +772,31 @@
     
     ///////////////////////////////////////////////////////////////////////////////// END OF COLLISION TEST ***/
     
+    /***
     // debug: colorize collision hulls of WList[0] and A
     WList[0].hull.shape.stroke_color = 'PURPLE';
     WList[0].hull.shape.stroke_width = 3;
     A.hull.shape.stroke_color = 'ORANGE';
     A.hull.shape.stroke_width = 3;
+    ***/
+    
+    
+    
+    // paint wall hulls
+    for (var w in WList) {
+        //WList[w].hull.approximate_shape();
+        WList[w].hull.shape.stroke_color = 'YELLOW';
+        WList[w].hull.shape.stroke_width = 4;
+        WList[w].update_more = function () {this.hull.shape.update(); /*this.offset_rotation(5);*/}
+    }
+    
+    /*
+    for (var s in Ships) {
+        Ships[s][0].hull.approximate_shape();
+    }*/
+    
+    
+    Game.set_fps(60);
     
     // Game Loop
     Nickel.update = function() {
@@ -797,12 +841,17 @@
         /////////////////TEST.update();
         
         
-        for (var i in WList)
-            WList[i].update();
+        //for (var i in WList)
+        //    WList[i].update();
         for (var i in UList)
             UList[i].update();
         StartMarker.update();
         EndMarker.update();
+        
+        /*
+        for (var i in WList)
+            WList[i].offset_turn(1);
+        //*/
         
         /** // TEST #1
         Ship.update();
@@ -810,33 +859,33 @@
         Ship.flee(World.map[10][6].get_center());
         FOV_Ship.update();
         **/
-        /**
+        //**
         // TEST #2
         Fish.update();
         for (var i in Ships) {
             if (Ships[i][0].arrived == false) {
             //    Ships[i][0].seek([Fish.get_cx(),Fish.get_cy() - SHIPDATA.fov_radius + 5]); * /
-                var astate = Ships[i][0].arrive(Fish,3,0.75,100,25,false);
+                var astate = Ships[i][0].arrive(Fish,8,0.75,100,25,false);
                 //console.log(astate);
                 if (astate == 2) {
                     Ships[i][0].arrived = true;
                     console.log("arrived");
                 } else if (astate == 0) {
-                    Ships[i][0].seek(Ships[i][0].tmp_aim,6,1);
+                    Ships[i][0].seek(Ships[i][0].tmp_aim,3,0.6);
                 }
             }
             if (Ships[i][0].arrived == true) {
-                var fstate = Ships[i][0].flee(Fish,100,9,0.07);
+                var fstate = Ships[i][0].flee(Fish,100,5,0.04);
                 if (fstate == 0)
-                    Ships[i][0].wander(1,90,5);
+                    Ships[i][0].wander(0.4,90,5);
             }
             Ships[i][0].update();
             Ships[i][1].cx = Ships[i][0].get_cx();
             Ships[i][1].cy = Ships[i][0].get_cy();
-            Ships[i][1].update();
+            //Ships[i][1].update();
         }
         FOV_Fish.update();
-        **/
+        //**/
         
         /** / TEST #3
         // A
@@ -861,7 +910,7 @@
             BShips[j][1].cx = BShips[j][0].get_cx();
             BShips[j][1].cy = BShips[j][0].get_cy();
             BShips[j][1].update();
-        }**/
+        }//**/
         
         /**
         // TEST #5
@@ -870,7 +919,7 @@
             Ships[i][1] = Ships[i][0].follow(path,Ships[i][1],true);
             Ships[i][0].update();
         }
-        **/
+        //**/
         
         /*****
         // TEST #6
@@ -885,11 +934,11 @@
             } else {
                 //Chasers[i].wander(1,95);
                 Chasers[i].ease_to_speed(1,5);
-                /*
-                if (Chasers[i].cohere(Chasers,75,25,9,0.1) == 3) {
-                    Chasers[i].ease_to_speed(0,0.01);
-                }
-                * /
+                
+                //if (Chasers[i].cohere(Chasers,75,25,9,0.1) == 3) {
+                //    Chasers[i].ease_to_speed(0,0.01);
+                //}
+                
                 Chasers[i].align(Chasers,50,true,0.01);
             }
             Chasers[i].update();
@@ -900,18 +949,104 @@
         //Loner.separate(Chasers,25,3.5,2,false);
         Loner.align(Chasers,250);
         Loner.update();
-        ******/
-        /*/ check collisions
-        console.log("Checking...");
-        for (var i in Chasers) {
-            for (var j in Chasers) {
+        //******/
+        // check collisions
+        //console.log("Checking...");
+        
+        /*/
+        //  TEST#3
+        //
+        for (var i in AShips) {
+            for (var j in BShips) {
                 if (i!=j) {
-                    if (Chasers[i].colliding_with(Chasers[j])) {
-                        console.log("Collision!");
+                    if (AShips[i][0].resolve_with(BShips[j][0],false,true,true,1,1)) {
+                        
+                        //...
                     }
                 }
             }
-        }//*/
+        }
+        for (var i in AShips) {
+            for (var j in WList) {
+                if (AShips[i][0].resolve_with(WList[j],false,true,true,1,5)) {
+
+                    //...
+                }
+            }
+        }
+        for (var i in BShips) {
+            for (var j in WList) {
+                if (BShips[i][0].resolve_with(WList[j],false,true,true,1,5)) {
+
+                    //...
+                }
+            }
+        }
+        //**/
+                
+        //
+        //  TEST#5, #2
+        //
+        for (var i in Ships) {
+            for (var j in Ships) {
+                if (i!=j) {
+                    if (Ships[i][0].resolve_with(Ships[j][0],false,true,true,1,1,
+                                                 Ships[i][0].get_velocity(),
+                                                 Ships[j][0].get_velocity())){
+                        //...
+                    }
+                }
+            }
+        }
+        for (var i in Ships) {
+            for (var j in WList) {
+                if (Ships[i][0].resolve_with(WList[j],false,true,true,1,5,
+                                             Ships[i][0].get_velocity(),
+                                             WList[j].get_velocity())){
+                    //...
+                }
+            }
+        }
+        for (var i in WList) {
+            for (var j in WList) {
+                if (WList[i].resolve_with(WList[j],false,true,true,1,1,
+                                          WList[i].get_velocity(),
+                                          WList[j].get_velocity())){
+                    //...
+                }
+            }
+        }
+        
+        // lastly update the ships and blocks
+        for (var i in Ships)
+            Ships[i][1].update();
+        for (var i in WList)
+            WList[i].update();
+        //***/
+        
+        
+        /*/
+        //  TEST#6
+        //
+        for (var i in Chasers) {
+            for (var j in Chasers) {
+                if (i!=j) {
+                    if (Chasers[i].resolve_with(Chasers[j],false,true,true,1,1,
+                                                Chasers[i].get_velocity(),
+                                                Chasers[j].get_velocity())) {
+                        //console.log("Collision!");
+                    }
+                }
+            }
+        }
+        for (var i in Chasers) {
+            for (var j in WList) {
+                if (Chasers[i].resolve_with(WList[j],false,true,false,1,1,
+                                                Chasers[i].get_velocity())){
+                    //...
+                }
+            }
+        }//***/
         
         
         A.update();
@@ -922,8 +1057,8 @@
         
         
         // update hulls' colors
-        WList[0].hull.shape.update();
-        A.hull.shape.update();
+        //WList[0].hull.shape.update();
+        //A.hull.shape.update();
 
         /************
         //Fish.update();

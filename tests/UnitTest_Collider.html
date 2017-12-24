@@ -47,6 +47,19 @@
     var lLine      = new SimpleLine(Game, 0, 0);
     var lRay       = new SimpleLine(Game, 0, 0);
     
+    // Sprites
+    var sprRect = new Sprite(Game, {w:128, h:64});
+    var sprCirc = new Sprite(Game, {w:64, h:64});
+    
+    // Sprite bounds
+    sprRect.bound = function () {};
+    sprCirc.bound = function () {};
+    
+    // Sprite collision hulls
+    var tmp_circ = new SimpleCircle(Game, 32);
+    //tmp_circ.set_center(sprCirc.get_center());
+    sprCirc.hull.set_shape(tmp_circ);
+    
     // stylize
     pTriangle.stroke_color = 'GREEN';
     pTriangle2.stroke_color = 'LIGHTGREEN';
@@ -59,12 +72,20 @@
     lLine.stroke_color = 'RED';
     lLine.stroke_width = 2;
     lRay.stroke_color = 'YELLOW';
+    sprRect.hull.shape.stroke_color = 'BLUE';
+    sprRect.hull.shape.fill_color = 'LIGHTBLUE';
+    sprRect.hull.shape.stroke_width = 3;
+    sprCirc.hull.shape.stroke_color = 'RED';
+    sprCirc.hull.shape.fill_color = 'PINK';
+    sprCirc.hull.shape.stroke_width = 3;
     
     // state init
     cCircle.set_center([100,100]);
     cCircle2.set_center([100,100]);
     lLine.hide();
     lRay.hide();
+    sprCirc.set_center(150,200);
+    sprRect.set_center(550,400);
     
     // controls init
     var selected = pTriangle;
@@ -100,9 +121,12 @@
         } else if (Game.key_upped == Nickel.KEYCODES.K_7) {
             selected = 123;
             console.log("Lines selected.");
+        } else if (Game.key_upped == Nickel.KEYCODES.K_8) {
+            selected = 456;
+            console.log("Sprite selected.");
         }
         // - movement
-        if (selected != 123) {
+        if (selected != 123 && selected != 456) {
             var spd = 17;
             var spd2=0;
             var spd3=0;
@@ -161,9 +185,9 @@
             polyC.fill_color = "WHITE";
             circC.fill_color = "PINK";
             if (selected.id == polyC.id || selected.id == circC.id || true) {
-                pSquare.shift_pos(2,1);
-                cCircle.shift_pos(-1,2);
-                pSquare.rotate_around(10,pSquare.get_center());
+                //pSquare.shift_pos(2,1);
+                //cCircle.shift_pos(-1,2);
+                //pSquare.rotate_around(10,pSquare.get_center());
                 var output = Collision_Detector.collides_poly_circle(polyC, circC, true, true, 1, 4, [2,1], [-1,2]);
                 if (output) {
                     polyC.fill_color = "RED";
@@ -171,7 +195,7 @@
                 }
             }
         // - creation
-        } else {
+        } else if (selected == 123) {
             // start
             if (Game.mouse_curr == 0 && !lLine.is_visible()) {
                 lLine.show();
@@ -251,6 +275,37 @@
                 line.stroke_width = lLine.stroke_width;
                 lines.push(line);
             }
+        } else if (selected == 456) {
+            var spd=0;
+            if (Game.key_curr == Nickel.KEYCODES.RIGHTARROW){
+                sprRect.offset_position(spd,0);
+            }
+            if (Game.key_curr == Nickel.KEYCODES.LEFTARROW){
+                sprRect.offset_position(-spd,0);
+            }
+            if (Game.key_curr == Nickel.KEYCODES.UPARROW){
+                sprRect.offset_position(0,-spd);
+            }
+            if (Game.key_curr == Nickel.KEYCODES.DOWNARROW){
+                sprRect.offset_position(0,spd);
+            }
+            
+            if (Game.key_curr == Nickel.KEYCODES.K_D){
+                sprCirc.offset_position(spd,0);
+            }
+            if (Game.key_curr == Nickel.KEYCODES.K_A){
+                sprCirc.offset_position(-spd,0);
+            }
+            if (Game.key_curr == Nickel.KEYCODES.K_W){
+                sprCirc.offset_position(0,-spd);
+            }
+            if (Game.key_curr == Nickel.KEYCODES.K_S){
+                sprCirc.offset_position(0,spd);
+            }
+            
+            sprCirc.resolve_with(sprRect,false,true,true,1,5,
+                                 sprCirc.get_velocity(),
+                                 sprRect.get_velocity());
         }
         
         // clear canvas, key history
@@ -267,6 +322,10 @@
         cCircle2.update();
         lLine.update();
         lRay.update();
+        sprCirc.update();
+        sprCirc.hull.shape.update();
+        sprRect.update();
+        sprRect.hull.shape.update();
         for (let line of lines) line.update();
         for (let tline of track_lines) tline.update();
         track_lines = [];

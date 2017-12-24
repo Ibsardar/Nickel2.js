@@ -1007,6 +1007,7 @@ var Pathfinder = {
     
     ,
     
+    // TODO
     find_path_to        : function(grid,unit,dest) {
         // Use an arbitrary algorithm along with navnode info
         //   to generate best path to goal.
@@ -1020,6 +1021,7 @@ var Pathfinder = {
     
     ,
     
+    // TODO
     find_path_near      : function(grid,unit,dest) {
         // ...
         
@@ -1027,6 +1029,7 @@ var Pathfinder = {
     
     ,
     
+    // TODO
     find_path_around    : function(grid,unit,dest) {
         // ...
         
@@ -1686,18 +1689,21 @@ var NavNodeBuilder = {
 var LocomotiveBuilder = {
     
     create_locomotive : function(loco_data) {
-    
-        // extract data
-        scene = loco_data.scene;
-        img   = loco_data.img_data;
         
-        // inherit from sprite
-        var unit = new Sprite(scene, img);
+        // inherit from sprite and extract data
+        var unit = new Sprite(loco_data.scene,
+                              loco_data.img_data,
+                              true, null, false);
         
         // set properties
+        unit.type = "Locomotive";
         unit.bound = function () {/* Continue */};
         unit.set_origin_centered();
         unit.set_rot_max(loco_data.max_rot);
+        if (loco_data.hull)
+            unit.set_hull(loco_data.hull);
+        else if (loco_data.hull_exists)
+            unit.set_hull(new ColliderHull(unit));
         
         // return object
         return unit;
