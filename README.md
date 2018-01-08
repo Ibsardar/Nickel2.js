@@ -1,4 +1,10 @@
 # Nickel2.js
+🔶 **Note:**
+
+*OK so this project is getting kind of out of hand... I just wanted to make a simple update that was a tad bit better than the original Nickel.js, turns out there is a ton more to game engines than I realized! I will be using Require.js to better organize everything, but I will also have a minimized version for quick use in the future.*
+
+🔶
+
 A complete overhaul of the original Real Time Strategy (RTS) Game Engine, 'Nickel.js'.
 
 Currently in the making.
@@ -35,7 +41,7 @@ Will no longer require simpleGame.js.
    
    - Keyboard
    
- - AI Agent Motor Capabilities with basic 2D physics
+ - AI Agent Motor/Behavior Capabilities with basic 2D physics
  
  - Pathfinding for multiple applications (un-optimized)
  
@@ -108,4 +114,6 @@ Will no longer require simpleGame.js.
  - LocomotiveBuilder
  
  - __main (hidden function used by Viewport)
+ 
+*some objects not listed - I will hopefully create a much better resource for documentation later because that's important* **:)**
  
