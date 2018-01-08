@@ -187,7 +187,7 @@ var Nickel = {
         is_array : function(o) { return o instanceof Array },
         assign_id : function() { return Nickel.ID++; },
         magnitude_of_vector : function(v) { return Math.sqrt(v[0]*v[0] + v[1]*v[1]); },
-        normalize_vector : function(v) { var mag=Math.sqrt(v[0]*v[0] + v[1]*v[1]); return [v[0]/mag, v[1]/mag]; },
+        normalize_vector : function(v) { var mag=Math.sqrt(v[0]*v[0] + v[1]*v[1]); return !mag ? false : [v[0]/mag, v[1]/mag]; },
         vector_product : function(v1,v2) { return [v1[0]*v2[0] + v1[0]*v2[1], v1[1]*v2[0] + v1[1]*v2[1]]; },
         cross_product : function(v1,v2) { return v1[0]*v2[1] - v1[1]*v2[0]; },
         dot_product : function(v1,v2) { return v1[0]*v2[0] + v1[1]*v2[1]; },
@@ -285,10 +285,17 @@ var Collision_Detector = {
     
     ,
     
+    //TODO: FIX NaNs WHEN LINE IS VERTICAL
     _closest_pt_on_lineseg_to_pt : function (line, pt) {
         //--    Helper Function: returns the closest point
         //--    on the given line segment to the given point
         //--
+        
+        if (!line.x || !pt) {
+            console.error('===');
+            console.error(line);
+            console.error(pt);
+        }
         
         // find normal dir to dir of line
         var n = [-line.dy, line.dx];
@@ -302,6 +309,14 @@ var Collision_Detector = {
         //
         // parameter of line: t (substitute s)
         var t = (n[0]*(line.y - pt[1]) + n[1]*(pt[0] - line.x)) / (n[1]*line.dx - line.dy*n[0]);
+        
+        /* /junk
+        if (!t) {
+            console.error(t);
+            console.error(line);
+            console.error(pt);
+            err_fnd = true;
+        }**/
         
         // plug t back in to obtain points
         var nearest_x = line.dx * t + line.x;
@@ -350,6 +365,17 @@ var Collision_Detector = {
                 you.shift_pos(your_velocity[0] * dir, your_velocity[1] * dir);
         }
         velocity_shift();
+        
+        // begin by temporarily rotating us by our angles
+        // (function makes this easier to use later)
+        /*var angle_rotation = function(dir=1) {
+            if (my_rotation)
+                me.shift_pos(my_velocity[0] * dir, my_velocity[1] * dir);
+                me.rotate_around(my_rotation * dir, )
+            if (your_rotation)
+                you.shift_pos(your_velocity[0] * dir, your_velocity[1] * dir);
+        }
+        angle_rotation();*/
         
         // this is for finding the minimum interval
         // distance along some normal in the case
@@ -532,6 +558,7 @@ var Collision_Detector = {
     
     ,
     
+    //TODO: OPTIMIZE
     collides_poly_circle : function (me, you, resolve_me=false, resolve_you=false,
                                      my_heaviness=1, your_heaviness=1,
                                      my_velocity=null, your_velocity=null) {
@@ -539,6 +566,12 @@ var Collision_Detector = {
         //--    point distance to circle center, then use a raycast to check
         //--    if circle is wholly consumed by polygon (center consumed for resolution).
         //--
+        
+        //junk
+        if (isNaN(me.x))
+            console.error('AAAH! (0)');
+        if (isNaN(you.cx))
+            console.error('AAAH! (0.5)');
         
         // begin by temporarily shifting us by our velocities
         // (function makes this easier to use later)
@@ -568,6 +601,10 @@ var Collision_Detector = {
             return true;
         }
         
+        //junk
+        var tmp_d = 123;
+        var tmp_o = 456;
+        
         // check every edge for the closest point to the
         // circle's center until a point collides
         var edge = null;
@@ -594,11 +631,19 @@ var Collision_Detector = {
                             
                         // direction vector from you to me
                         var dir = Nickel.UTILITY.normalize_vector(
-                                    Nickel.UTILITY.subtract_vector(closest, you.get_center()));
+                                        Nickel.UTILITY.subtract_vector(closest, you.get_center()));
+                        
+                        // default if normalization not possible (probably zero-vector)
+                        if (!dir)
+                            var dir = [1,0];
 
                         // distance of circle's overlap over poly
                         var overlap_dist = you.radius - min_distance;
 
+                        //junk
+                        tmp_d = dir;
+                        tmp_o = overlap_dist;
+                        
                         // push vector from you to me
                         min_translation_vec = [dir[0] * overlap_dist, dir[1] * overlap_dist];
                     }
@@ -613,16 +658,31 @@ var Collision_Detector = {
         // push vector a little bit differently:
         if (within) {
             
-            // direction vector from you to me
+            // direction vector from me to you
             var dir = Nickel.UTILITY.normalize_vector(
-                        Nickel.UTILITY.subtract_vector(you.get_center(), closest));
+                            Nickel.UTILITY.subtract_vector(you.get_center(), closest));
+
+            // default if normalization not possible (probably zero-vector)
+            if (!dir)
+                var dir = [1,0];
 
             // distance of circle's overlap over poly
             var overlap_dist = you.radius + min_distance;
-
+            
             // push vector from you to me
             min_translation_vec = [dir[0] * overlap_dist, dir[1] * overlap_dist];
         }
+        /*
+        if (err_fnd && min_translation_vec) {
+            console.log(JSON.stringify(min_translation_vec));
+            if (isNaN(min_translation_vec[0])) {
+                console.log(within);
+                console.log(JSON.stringify(tmp_d));
+                console.log(JSON.stringify(you.get_center()));
+                console.log(JSON.stringify(closest));
+                console.log("---");
+            }
+        }//*/
         
         // if a resolution has been found, apply it
         // to both of us according to given parameters
@@ -755,7 +815,7 @@ var Collision_Detector = {
     
     ,
     
-    // TODO: POSSIBLY UPDATE RETURN VALUE (AFTER FIXING LINE-RAY COLLISION)
+    // TODO: POSSIBLY UPDATE RETURN VALUE
     collides_poly_ray   : function (me, you) {
         //--    Polygon-ray collision detection via
         //--    ray-edge collision checks
@@ -807,7 +867,7 @@ var Collision_Detector = {
 
         // if odd number of collisions, point is contained within poly
         if (collisions % 2) {
-            console.log("point within polygon");
+            //console.log("point within polygon");
             return true;
         }
 
@@ -870,6 +930,10 @@ var Collision_Detector = {
                 
                 // unit direction vector from you to me
                 var unit_dir_vec = Nickel.UTILITY.normalize_vector(diff);
+                        
+                // default if normalization not possible (probably zero-vector)
+                if (!unit_dir_vec)
+                    var unit_dir_vec = [1,0];
                 
                 // displacement vector from you to me
                 //  > this is the vector that begins at the closest
@@ -1346,7 +1410,8 @@ function Viewport(html_canvas_element_id) {
 
     // canvas
     this.canvas = document.createElement('canvas');
-    document.getElementById(html_canvas_element_id).appendChild(this.canvas);
+    this.element = document.getElementById(html_canvas_element_id);
+    this.element.appendChild(this.canvas);
     this.context = this.canvas.getContext('2d');
 
     // background
@@ -1356,6 +1421,9 @@ function Viewport(html_canvas_element_id) {
     this.timer_id = 0;
     this.fps      = 30;
     this.paused   = true;
+    
+    // anti-aliasing
+    this.antialias = -1;
 
     // cursor pos
     this.mouse_x = this.canvas.width/2;
@@ -1397,6 +1465,11 @@ function Viewport(html_canvas_element_id) {
 
         // view is not paused anymore
         this.paused = false;
+        
+        // default anti-aliasing is off
+        // (only do this if antialias has -1 as its value)
+        if (this.antialias == -1)
+            this.toggle_image_blur();
 
         // fps
         var seconds = 1 / this.fps;
@@ -1568,6 +1641,14 @@ function Viewport(html_canvas_element_id) {
 
         return [this.get_w()/2,this.get_h()/2];
     }
+    
+    this.get_bounds = function() {
+        //--    Returns an object representing the
+        //--    viewport's bounds
+        //--
+        
+        return {x:0, y:0, w:this.get_w(), h:this.get_h()};
+    }
 
     this.set_size = function(w,h) {
       //-- Set width and height of canvas in pixels
@@ -1589,26 +1670,64 @@ function Viewport(html_canvas_element_id) {
         this.canvas.style.backgroundColor = color;
     }
 
-    this.toggle_cursor = function(bool=true){
-        //--    if bool is true, shows cursor
+    this.toggle_cursor = function(){
+        //--    if cursor is hidden, shows cursor,
         //--    else, hides it
 
-        if (bool) {
+        if (this.canvas.style.cursor = "none") {
             this.canvas.style.cursor = "block";
         } else {
             this.canvas.style.cursor = "none";
         }
     }
 
-    this.toggle_visibility = function(bool=true){
-        //--    if bool is true, shows viewport
+    this.toggle_visibility = function(){
+        //--    if viewport is hidden, shows viewport,
         //--    else, hides it
 
-        if (bool) {
+        if (this.canvas.style.display == "none") {
             this.canvas.style.display = "block";
         } else {
             this.canvas.style.display = "none";
         }
+    }
+    
+    this.toggle_image_blur = function() {
+        //--    enables/disables image anti-aliasing for better
+        //--    performance and higher quality images
+        //--
+        //--    This code snippet was copied and edited from:
+        //--        https://stackoverflow.com/questions/14068103/disable-antialising-when-scaling-images
+        //--
+        
+        if (this.antialias) {
+            this.antialias = false;
+            this.context.imageSmoothingEnabled = false;
+            $(this.element).css({ 
+                "image-rendering" : "optimizeSpeed",             /* STOP SMOOTHING, GIVE ME SPEED  */
+                "image-rendering" : "-moz-crisp-edges",          /* Firefox                        */
+                "image-rendering" : "-o-crisp-edges",            /* Opera                          */
+                "image-rendering" : "-webkit-optimize-contrast", /* Chrome (and eventually Safari) */
+                "image-rendering" : "pixelated",                 /* Chrome */
+                "image-rendering" : "optimize-contrast",         /* CSS3 Proposed                  */
+                "-ms-interpolation-mode" : "nearest-neighbor"    /* IE8+                           */
+            });
+            
+        } else {
+            this.antialias = true;
+            this.context.imageSmoothingEnabled = true;
+            $(this.element).css({ 
+                "image-rendering" : "auto",       /* BROWSER'S DEFAULT IMAGE RENDERER */
+                "-ms-interpolation-mode" : "auto" /* IE8+                             */
+            });
+        }     
+    }
+    
+    this.is_image_blur_on = function() {
+        //--    Returns if anti-aliasing is on
+        //--
+        
+        return this.antialias;
     }
 
 }//end Viewport
@@ -1793,8 +1912,6 @@ function SimplePoly(scene, vertices, is_equiangular=false, track_point=null) {
             this.tracker[0] += shiftx;
             this.tracker[1] += shifty;
         }
-        
-        //console.log(this.tracker);
     }
     
     // TODO: TEST
@@ -1869,6 +1986,31 @@ function SimplePoly(scene, vertices, is_equiangular=false, track_point=null) {
             this.tracker[0] = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
             this.tracker[1] = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
         }
+    }
+    
+    //
+    // proxy functions:
+    //
+    
+    this.offset_position = function(offx, offy) {
+        //--    shift_pos proxy
+        //--
+        
+        this.shift_pos(offx, offy);
+    }
+    
+    this.offset_turn = function(angle, point) {
+        //--    rotate_around proxy
+        //--
+        
+        this.rotate_around(angle, point);
+    }
+    
+    this.offset_scale = function(scale, point) {
+        //--    scale_around proxy
+        //--
+        
+        this.scale_around(scale, point);
     }
 }//end SimplePoly
 
@@ -2066,6 +2208,31 @@ function SimpleEllipse(scene, radius_h, radius_v) {
         this.cy = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
         
         this.rot += radians;
+    }
+    
+    //
+    // proxy functions:
+    //
+    
+    this.offset_position = function(offx, offy) {
+        //--    shift_pos proxy
+        //--
+        
+        this.shift_pos(offx, offy);
+    }
+    
+    this.offset_turn = function(angle, point) {
+        //--    rotate_around proxy
+        //--
+        
+        this.rotate_around(angle, point);
+    }
+    
+    this.offset_scale = function(scale, point) {
+        //--    scale_around proxy
+        //--
+        
+        this.scale_around(scale, point);
     }
 }//end SimpleEllipse
 
@@ -2289,6 +2456,31 @@ function SimpleCircle(scene, radius, track_point=null) {
             this.tracker[0] = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
             this.tracker[1] = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
         }
+    }
+    
+    //
+    // proxy functions:
+    //
+    
+    this.offset_position = function(offx, offy) {
+        //--    shift_pos proxy
+        //--
+        
+        this.shift_pos(offx, offy);
+    }
+    
+    this.offset_turn = function(angle, point) {
+        //--    rotate_around proxy
+        //--
+        
+        this.rotate_around(angle, point);
+    }
+    
+    this.offset_scale = function(scale, point) {
+        //--    scale_around proxy
+        //--
+        
+        this.scale_around(scale, point);
     }
 }//end SimpleCircle
 
@@ -2541,6 +2733,31 @@ function SimpleLine(scene, startpoint, endpoint) {
         this.dx = this.xend - this.x;
         this.dy = this.yend - this.y;
     }
+    
+    //
+    // proxy functions:
+    //
+    
+    this.offset_position = function(offx, offy) {
+        //--    shift_pos proxy
+        //--
+        
+        this.shift_pos(offx, offy);
+    }
+    
+    this.offset_turn = function(angle, point) {
+        //--    rotate_around proxy
+        //--
+        
+        this.rotate_around(angle, point);
+    }
+    
+    this.offset_scale = function(scale, point) {
+        //--    scale_around proxy
+        //--
+        
+        this.scale_around(scale, point);
+    }
 }//end SimpleLine
 
 
@@ -2779,7 +2996,7 @@ function ColliderHull(sprite, approximate=true) {
     // simple shape of hull
     if (approximate) {
         
-        // get coordinates, dimensions (relative to sprite's origin) ///////////////                   HERE
+        // get coordinates, dimensions (relative to sprite's origin)
         var tl = this.parent.get_topleft();
         var tr = this.parent.get_topright();
         var bl = this.parent.get_bottomleft();
@@ -2788,13 +3005,8 @@ function ColliderHull(sprite, approximate=true) {
         // create rectangle matching the sprite's basic dimensions
         this.shape = new SimplePoly(this.parent.scene,
                                     [tl,tr,br,bl],
-                                    true, this.parent.get_pos2());
+                                    true, this.parent.get_pos2());  // HERE: THE PARENT ORIGIN POINT MAY NOT BE THE TRUE ORIGIN (BIG PROBLEM EEK)
     }
-    
-    // origin relative to sprite's origin
-    // Ex: 0,0 would mean this hull will rotate around sprite's origin on update
-    //this.origin = [-1 * sprite.get_origin()[0], -1 * sprite.get_origin()[1]];..........nope!    (junk maybe..)
-    //this.origin = [0,0];
     
     // keep track of how much shape has rotated and scaled
     this.rotated = this.parent.get_rot();
@@ -2813,15 +3025,13 @@ function ColliderHull(sprite, approximate=true) {
         this.updated = false;
     }
     
-    // TODO: SYNC ERRORS - SHAPE NOT ALIGNING CORRECTLY WITH SPRITE
-    // TODO: DON'T ONLY USE SCALEX - USE BOTH X AND Y (will have to handle special case for circles)
-    // TODO: FIX SCALE ERRORS (NaN VALUES APPEAR ONCE SCALE BECOMES 0)
     this.update_transformations = function() {
         //--    Updates the hull's shape based on its parent
         //--    sprite's position, rotation, and horizontal scale
         //--    (not called every frame)
         //--
         
+        // TODO: FIX ROTATION AND SCALING - THEY ARE A BIT OFF
         // only update tranformations if they have not been
         // updated this frame already: (also avoid update if
         // dimensions of parent don't make sense)
@@ -2834,8 +3044,6 @@ function ColliderHull(sprite, approximate=true) {
             // translation
             this.shape.shift_pos(diff[0], diff[1]);
             
-            //console.log(this.shape.get_tracker());
-            
             // rotation
             this.shape.rotate_around(this.parent.get_rot() - this.rotated, par_pos);
             
@@ -2843,8 +3051,8 @@ function ColliderHull(sprite, approximate=true) {
             // (circle cannot scale differently on x and y axis, but polys can)
             // (just use x-axis scale if circle hull)
             // TODO: OPTIMIZE CHECKING TYPES HERE (AS WELL AS MANY OTHER PLACES IN THIS FILE)
-            var sx = this.parent.get_scalex();
-            var sy = this.parent.get_scaley();
+            var sx = this.parent.get_scalex() * this.parent.get_scaleg();
+            var sy = this.parent.get_scaley() * this.parent.get_scaleg();
             if (this.shape.type == "SimplePoly") {
                 this.shape.scale_around2(sx / this.scaledx, sy / this.scaledy, par_pos);
             } else if (this.shape.type == "SimpleCircle") {
@@ -2855,6 +3063,12 @@ function ColliderHull(sprite, approximate=true) {
             this.rotated = this.parent.get_rot();
             this.scaledx = sx;
             this.scaledy = sy;
+            
+            /***   HERE: ERROR - TRACKER POINT SHOULD BE CENTER OF LOCOMOTIVES (CENTER NOT EQUAL TO TRACKER PT!!!)
+            if (this.parent.type == "Locomotive" &&
+                (par_pos[0]!=this.shape.get_center()[0] || par_pos[1]!=this.shape.get_center()[1]))
+                console.log(par_pos[0]==this.shape.get_center()[0] && par_pos[1]==this.shape.get_center()[1]);
+            //**/
         }
     }
     
@@ -2993,27 +3207,22 @@ function ColliderHull(sprite, approximate=true) {
         return false;
     }
     
-    // TODO
+    // TODO: OPTIMIZE
     this.resolve_collision = function(obj,resolve_me=true,resolve_you=true,my_heaviness=1,
-                                      ur_heaviness=1,my_velocity=null,ur_velocity=null,
-                                      my_rotation=null, ur_rotation=null) {
+                                      ur_heaviness=1,my_velocity=null,ur_velocity=null) {
         //--    Same as detect_collision but also resolves
         //--
-        var debug=false;
-        // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
         
-        //console.log(this.shape.get_tracker() + " AND " + this.parent.get_pos2() + " VS:"); //junk
+        // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
         
         // first, make sure hull is up to date with parent sprite
         this.update_transformations();
-        
-        //console.log(this.shape.get_tracker() + " AND " + this.parent.get_pos2()); //junk
         
         // me = circle
         if (this.shape.type == "SimpleCircle") {
         
             // you = point
-            if (Nickel.UTILITY.is_array(obj)) {             if (debug) console.log("circle -> pt");
+            if (Nickel.UTILITY.is_array(obj)) {
                 
                 return Collision_Detector.collides_circle_point(this.shape, obj);
                 
@@ -3024,64 +3233,60 @@ function ColliderHull(sprite, approximate=true) {
                 obj.update_transformations();
                 
                 // you = circle hull
-                if (obj.shape.type == "SimpleCircle") {             if (debug) console.log("circle -> hull.circle");
+                if (obj.shape.type == "SimpleCircle") {
                     
                     return Collision_Detector.collides_circle_circle(this.shape, obj.shape,
                                                                      resolve_me, resolve_you,
                                                                      my_heaviness, ur_heaviness,
-                                                                     my_velocity, ur_velocity,
-                                                                     my_rotation, ur_rotation);
+                                                                     my_velocity, ur_velocity);
                 
                 // you = poly hull
-                } else if (obj.shape.type == "SimplePoly") {             if (debug) console.log("circle -> hull.poly");
+                } else if (obj.shape.type == "SimplePoly") {
                 
                     var res = Collision_Detector.collides_poly_circle(obj.shape, this.shape,
                                                                    resolve_you, resolve_me,
                                                                    ur_heaviness, my_heaviness,
-                                                                   ur_velocity, my_velocity,
-                                                                   my_rotation, ur_rotation);
+                                                                   ur_velocity, my_velocity);
                     if (!res)
                         return res;
                     return [res[1], res[0]]; // order: me, you
                 }
                 
             // you = poly
-            } else if (obj.type == "SimplePoly") {             if (debug) console.log("circle -> poly");
+            } else if (obj.type == "SimplePoly") {
 
                 var res = Collision_Detector.collides_poly_circle(obj, this.shape,
                                                                   resolve_you, resolve_me,
                                                                   ur_heaviness, my_heaviness,
-                                                                  ur_velocity, my_velocity,
-                                                                  my_rotation, ur_rotation);
+                                                                  ur_velocity, my_velocity);
                 if (!res)
                     return res;
                 return [res[1], res[0]]; // order: me, you
                 
             // you = circle
-            } else if (obj.type == "SimpleCircle") {             if (debug) console.log("circle -> circle");
+            } else if (obj.type == "SimpleCircle") {
                 
                 return Collision_Detector.collides_circle_circle(this.shape, obj,
                                                                  resolve_me, resolve_you,
                                                                  my_heaviness, ur_heaviness,
-                                                                 my_velocity, ur_velocity,
-                                                                 my_rotation, ur_rotation);
+                                                                 my_velocity, ur_velocity);
                 
             // you = line
-            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {             if (debug) console.log("circle -> line");
+            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
                 
                 return Collision_Detector.collides_circle_line(this.shape, obj);
                 
             // you = ray
-            } else if (obj.type == "RayCast") {             if (debug) console.log("circle -> ray");
+            } else if (obj.type == "RayCast") {
                 
                 return Collision_Detector.collides_circle_ray(this.shape, obj);
             }
-                             if (debug) console.log("circle -> UNKOWN !!!!!!!!!!!!!!!!");
+            
         // me = poly
         } else if (this.shape.type == "SimplePoly") {
             
             // you = point
-            if (Nickel.UTILITY.is_array(obj)) {             if (debug) console.log("poly -> pt");
+            if (Nickel.UTILITY.is_array(obj)) {
                 return Collision_Detector.collides_poly_point(this.shape, obj);
                 
             // you = hull
@@ -3091,53 +3296,49 @@ function ColliderHull(sprite, approximate=true) {
                 obj.update_transformations();
                 
                 // you = circle hull
-                if (obj.shape.type == "SimpleCircle") {             if (debug) console.log("poly -> hull.circle");
+                if (obj.shape.type == "SimpleCircle") {
                     
                     return Collision_Detector.collides_poly_circle(this.shape, obj.shape,
                                                                    resolve_me, resolve_you,
                                                                    my_heaviness, ur_heaviness,
-                                                                   my_velocity, ur_velocity,
-                                                                   my_rotation, ur_rotation);
+                                                                   my_velocity, ur_velocity);
                 
                 // you = poly hull
-                } else if (obj.shape.type == "SimplePoly") {             if (debug) console.log("poly -> hull.poly");
+                } else if (obj.shape.type == "SimplePoly") {
                 
                     return Collision_Detector.collides_poly_poly(this.shape, obj.shape,
                                                                  resolve_me, resolve_you,
                                                                  my_heaviness, ur_heaviness,
-                                                                 my_velocity, ur_velocity,
-                                                                 my_rotation, ur_rotation);
+                                                                 my_velocity, ur_velocity);
                 }
                 
             // you = poly
-            } else if (obj.type == "SimplePoly") {             if (debug) console.log("poly -> poly");
+            } else if (obj.type == "SimplePoly") {
 
                 return Collision_Detector.collides_poly_poly(this.shape, obj,
                                                              resolve_me, resolve_you,
                                                              my_heaviness, ur_heaviness,
-                                                             my_velocity, ur_velocity,
-                                                             my_rotation, ur_rotation);
+                                                             my_velocity, ur_velocity);
                 
             // you = circle
-            } else if (obj.type == "SimpleCircle") {             if (debug) console.log("poly -> circle");
+            } else if (obj.type == "SimpleCircle") {
                 
                 return Collision_Detector.collides_poly_circle(this.shape, obj,
                                                                resolve_me, resolve_you,
                                                                my_heaviness, ur_heaviness,
-                                                               my_velocity, ur_velocity,
-                                                               my_rotation, ur_rotation);
+                                                               my_velocity, ur_velocity);
                 
             // you = line
-            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {             if (debug) console.log("poly -> line");
+            } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
                 
                 return Collision_Detector.collides_poly_line(this.shape, obj);
                 
             // you = ray
-            } else if (obj.type == "RayCast") {             if (debug) console.log("poly -> ray");
+            } else if (obj.type == "RayCast") {
                 
                 return Collision_Detector.collides_poly_ray(this.shape, obj);
             }
-                         if (debug) console.log("poly -> UNKNOWN!!!!!!!!!!!!!!!!!!");
+            
         }
         
         // me = unknown
@@ -3148,8 +3349,9 @@ function ColliderHull(sprite, approximate=true) {
 
 
 ////////////////////////////////////////////
-///   SPRITE   /////////////////////////////    TODO: FIX LAST_ROT MECHANISM (MAYBE ONLY CHANGE DR THEN THAT WILL BE THE TOTAL ROTATION FOR THE FRAME)
+///   SPRITE   /////////////////////////////    // TODO: CHANGE "GET_TOP" TO "GET_TOP_BOUND" AND SO ON...
 ////////////////////////////////////////////
+                                             // TODO: REMOVE "(does not work if sprite rotates)" COMMENTS WHERE NECESSARY
 function Sprite(scene, image_data, has_bbox=true,
                  collisiion_hull=null, approximate=true) {
 
@@ -3199,9 +3401,6 @@ function Sprite(scene, image_data, has_bbox=true,
     this.speed = 0;
     this.dx = 0;
     this.dy = 0;
-
-    // force
-    this.forces = [];
 
     // acc
     this.accel = 0;
@@ -3253,7 +3452,7 @@ function Sprite(scene, image_data, has_bbox=true,
         if (this.bbox) this.bbox.update();
         
         // updates collision hull
-        this.hull.update();
+        if (this.hull) this.hull.update();
         
         // update history
         this.update_records();
@@ -3354,11 +3553,6 @@ function Sprite(scene, image_data, has_bbox=true,
         // speed vector
         var tmp_dx = Math.cos(theta) * this.speed * this.scale_global;
         var tmp_dy = Math.sin(theta) * this.speed * this.scale_global;
-        // apply forces
-        for (var f in this.forces) {
-            this.dx += this.forces[f][0];
-            this.dy += this.forces[f][1];
-        }
         // update difference in x and y position
         this.x = this.x + this.dx + tmp_dx;
         this.y = this.y + this.dy + tmp_dy;
@@ -3729,25 +3923,6 @@ function Sprite(scene, image_data, has_bbox=true,
         return this.speed;
     }
 
-
-    // +++  DELETE THIS GARBAGE MAN (CAREFULLY) ~~~~~~~~~~~  (KEEP GET_VELOCITY THO)
-    // +++ > force-related:
-
-
-    this.get_force = function(index) {
-        //--    Returns a specific force
-        //--
-
-        return this.forces[i];
-    }
-
-    this.get_forces = function() {
-        //--    Returns all forces currently applied
-        //--
-
-        return this.forces;
-    }
-
     this.get_velocity = function() {
         //--    Returns the accurate velecity vector
         //--
@@ -3762,7 +3937,6 @@ function Sprite(scene, image_data, has_bbox=true,
 
         return [dx, dy];
     }
-    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
     // +++
@@ -3942,23 +4116,43 @@ function Sprite(scene, image_data, has_bbox=true,
     this.set_scale = function(n) {
         //--    Scale sprite by n
         //--
-
-        this.scale_x = n;
-        this.scale_y = n;
+        
+        this.set_scalex(n);
+        this.set_scaley(n);
     }
 
     this.set_scalex = function(n) {
         //--    Scale sprite's width by n
         //--
-
+        
+        // get percent origin[0] within self
+        // (<0 left of sprite, >1 right of sprite, else within)
+        var ox_perc = this.origin[0] / this.get_w();
+        
+        var x2 = this.get_x2();
+        this.set_x(n / this.scale_x * (this.get_x() - x2) + x2);
         this.scale_x = n;
+        
+        // restore origin[1] to new scale by maintaing the
+        // same percent within the pre-scaled sprite
+        this.origin[0] = ox_perc * this.get_w();
     }
 
     this.set_scaley = function(n) {
         //--    Scale sprite's height by n
         //--
-
+        
+        // get percent origin[1] within self
+        // (<0 above sprite, >1 under sprite, else within)
+        var oy_perc = this.origin[1] / this.get_h();
+        
+        var y2 = this.get_y2();
+        this.set_y(n / this.scale_y * (this.get_y() - y2) + y2);
         this.scale_y = n;
+        
+        // restore origin[1] to new scale by maintaing the
+        // same percent within the pre-scaled sprite
+        this.origin[1] = oy_perc * this.get_h();
     }
 
 
@@ -4094,40 +4288,6 @@ function Sprite(scene, image_data, has_bbox=true,
 
 
     // +++
-    // +++ > force-related:     TODO: REMOVE THESE CAREFULLY
-
-    this.set_force = function(index, force) {
-        //--    Sets a specific force
-        //--
-
-        this.forces[index] = force;
-    }
-
-    this.set_forces = function(force_list) {
-        //--    Resets the force list to a new list
-        //--
-
-        this.forces = force_list;
-    }
-
-    this.add_force = function(force) {
-        //--    Adds a new force to the list of forces
-        //--
-
-        this.forces.push(force);
-    }
-
-    this.add_velocity = function(vec) {
-        //--    Adds a velocity vector directly to the current
-        //--    velocity vector
-        //--
-
-        this.dx += vec[0];
-        this.dy += vec[1];
-    }
-
-
-    // +++
     // +++ > acceleration-related:
 
 
@@ -4185,8 +4345,14 @@ function Sprite(scene, image_data, has_bbox=true,
 
     this.set_origin = function(offset) {
         //--    Set the origin of rotation (pivot)
-        //--    relative to the default topleft corner
+        //--    relative to the default topleft corner.
+        //--    Also update the hull so it appears to 
+        //--    not have changed
         //--
+        
+        if (this.hull)
+            this.hull.shape.shift_pos(this.origin[0] - offset[0],
+                                      this.origin[1] - offset[1]);
 
         this.origin[0] = offset[0];
         this.origin[1] = offset[1];
@@ -4194,11 +4360,19 @@ function Sprite(scene, image_data, has_bbox=true,
 
     this.set_origin_centered = function() {
         //--    Set the origin of rotation (pivot)
-        //--    in the center of the image
+        //--    in the center of the image.
+        //--    Also update the hull so it appears to 
+        //--    not have changed
         //--
+        
+        var old_origin = [this.origin[0], this.origin[1]];
 
         this.origin[0] = this.get_w() / 2;
         this.origin[1] = this.get_h() / 2;
+        
+        if (this.hull)
+            this.hull.shape.shift_pos(old_origin[0] - this.origin[0],
+                                      old_origin[1] - this.origin[1]);
     }
 
 
@@ -4265,8 +4439,7 @@ function Sprite(scene, image_data, has_bbox=true,
     // TODO: OPTIMIZE, ADD OPTION TO USE ROTATION FOR PREDICTION <--- HERE !!!
     this.resolve_with = function(target, layer_check=true, resolve_me=true, resolve_you=true,
                                  my_heaviness=1, ur_heaviness=1,
-                                 my_velocity=null, ur_velocity=null,
-                                 my_rotation=null, ur_rotation=null) {
+                                 my_velocity=null, ur_velocity=null) {
         //--    Same as Sprite.colliding_with but also
         //--    resolves collisions.
         //--
@@ -4286,16 +4459,14 @@ function Sprite(scene, image_data, has_bbox=true,
                 resolve = this.hull.resolve_collision(target.hull,
                                                    resolve_me, resolve_you,
                                                    my_heaviness, ur_heaviness,
-                                                   my_velocity, ur_velocity,
-                                                   my_rotation, ur_rotation);
+                                                   my_velocity, ur_velocity);
             // same layer check
             } else if (layer_check && (target.get_layer() == this.get_layer())) {
                 
                 resolve = this.hull.resolve_collision(target.hull,
                                                    resolve_me, resolve_you,
                                                    my_heaviness, ur_heaviness,
-                                                   my_velocity, ur_velocity,
-                                                   my_rotation, ur_rotation);
+                                                   my_velocity, ur_velocity);
             // different layer
             } else {
                 return false;
@@ -4314,8 +4485,7 @@ function Sprite(scene, image_data, has_bbox=true,
             resolve = this.hull.resolve_collision(target,
                                                resolve_me, resolve_you,
                                                my_heaviness, ur_heaviness,
-                                               my_velocity, ur_velocity,
-                                               my_rotation, ur_rotation);
+                                               my_velocity, ur_velocity);
         }
         
         // sync resolution with self as well
@@ -4348,6 +4518,8 @@ function Sprite(scene, image_data, has_bbox=true,
             var _img_data = {w:this.get_w_orig(), h:this.get_h_orig()};
 
         var spr = new Sprite(this.scene, _img_data, !!this.bbox, null, !!this.hull);
+        
+        spr.bound = this.bound;
         
         spr.update();
         return spr;
@@ -4472,18 +4644,17 @@ function Sprite(scene, image_data, has_bbox=true,
         //--    Offsets scale via scaling matrix calculations.
         //--    New global scale based on current global scale
         //--
+        
+        var ox_perc = this.origin[0] / this.get_w();
+        var oy_perc = this.origin[1] / this.get_h();
 
-        if (!origin)
-            origin = this.get_pos2();
-
-        var x0 = origin[0];
-        var y0 = origin[1];
-        var x  = this.get_x();
-        var y  = this.get_y();
-        this.set_x(scale*(x-x0) + x0);
-        this.set_y(scale*(y-y0) + y0);
+        this.set_x(scale*(this.get_x()-origin[0]) + origin[0]);
+        this.set_y(scale*(this.get_y()-origin[1]) + origin[1]);
 
         this.scale_global *= scale;
+        
+        this.origin[0] = ox_perc * this.get_w();
+        this.origin[1] = oy_perc * this.get_h();
     }
 
     this.turn = function(angle,is_offset=true,instant=true,buffer=0) {
@@ -5148,6 +5319,13 @@ function Queue() {
         off = 0;
     }
 
+    this.data = function() {
+        //--    returns raw queue data
+        //--
+
+        return list.slice(off,list.length);
+    }
+
     this.dump = function() {
         //--    slices all objects from queue into
         //--    an array, then returns it
@@ -5475,7 +5653,7 @@ function Heap(_type='max') {
 
 
 ////////////////////////////////////////////
-///   QUADTREE  ////////////////////////////
+///   QUADTREE  ////////////////////////////        // TODO: REMOVE OVERLAP FEATURE (NOT RELIABLE ANYMORE)
 ////////////////////////////////////////////
 function QuadTreeObj(obj,overlap,bounds) {
 
@@ -5497,6 +5675,10 @@ function QuadTreeObj(obj,overlap,bounds) {
 }//end QuadTreeObj
 
 function QuadTreeNode() {
+    
+    // 1 parent QuadTreeNode (utilized to allow more
+    // neighbors to be returned in the get function)
+    this.parent = null;
 
     // a list of children QuadTreeNodes
     // (separated into 4 (hence "quad") equal squares)
@@ -5541,7 +5723,7 @@ function QuadTree(max_objs, max_depth, bounds) {
     // cell unitl 4-way splits stop occurring
     var MAX_DPTH = max_depth;
 
-    this.in = function(obj,pos,size,node=this.root) {
+    this.in = function(obj,pos,size,exclude_outliers=true,node=this.root) {
         //--    adds a new object into the quadtree
         //--    and applies any neccessary splits.
         //--    returns 0 if obj lies outside of the quadtree.
@@ -5551,60 +5733,84 @@ function QuadTree(max_objs, max_depth, bounds) {
 
         if (!obj) return false;
         var curr = node;
+        var past = node.parent;
+        if (!past) past = node;
         var o = new QuadTreeObj(obj, false, { x:pos[0], w:size[0],
                                               y:pos[1], h:size[1] });
-
+        
+        // (can help with performance when there are lots
+        //  of objects beyond entire quadtree space.)
+        // before anything, exclude any outliers if desired (~10 ops)
+        if (exclude_outliers) {
+            if (o.bounds.x + o.bounds.w    < curr.bounds.x ||
+                o.bounds.x > curr.bounds.x + curr.bounds.w ||
+                o.bounds.y + o.bounds.h    < curr.bounds.y ||
+                o.bounds.y > curr.bounds.y + curr.bounds.h) {
+                return 0;
+            }
+        }
+        
         // mimics recursion
         while (curr) {
 
+            // if the current node's level has reached max depth
             if (curr.level >= MAX_DPTH) {
                 curr.objs.push(o);
                 return 2;
             }
 
+            // if the current node has not reached max # of objects yet and
+            // it has no children yet
             if (curr.objs.length < MAX_OBJS && !curr.children.length) {
                 curr.objs.push(o);
                 return 2;
             }
 
+            // if the current node has some children
             else if (curr.children.length) {
                 var quadrant = this.quad(curr.bounds, o.bounds);
-                if (quadrant != -1) {
-                    curr = curr.children[quadrant];
-                } else {
-                    curr.objs.push(o);
-                    o.overlapping = true;
-                    return 1;
+                switch (quadrant) {
+                    // should never happen except maybe on the 1st iteration
+                    case -2:
+                        past.objs.push(o);
+                        o.overlapping = true;
+                        return 1;
+
+                    // if obj in bounds but overlaps into at least 1 next quadrant
+                    case -1:
+                        curr.objs.push(o);
+                        o.overlapping = true;
+                        return 1;
+                        
+                    // if obj in bounds and is bounded by some next quadrant
+                    default:
+                        past = curr;
+                        curr = curr.children[quadrant];
                 }
             }
 
+            // TODO: CAN BE FASTER
+            // if the current node has reached max # of objects and needs to be chopped
             else if (curr.objs.length >= MAX_OBJS) {
-                var quadrant = -1;
-                var tmp_objs = curr.objs;
-
+                var transfer = curr.objs;
                 curr.objs = [];
                 this.chop(curr);
+                
+                // redistrubute existing objects in curr node to its children
+                for (var i in transfer) {
+                    var quadrant = this.quad(curr.bounds, transfer[i].bounds);
+                    switch (quadrant) {
+                        // if any kind of overlapping
+                        case -2:
+                        case -1:
+                            transfer[i].overlapping = true;
+                            curr.objs.push(transfer[i]);
+                            break;
 
-                for (var i in tmp_objs) {
-                    quadrant = this.quad(curr.bounds, tmp_objs[i].bounds);
-                    if (quadrant != -1) {
-                        this.in(tmp_objs[i].entity,
-                                [tmp_objs[i].bounds.x, tmp_objs[i].bounds.y],
-                                [tmp_objs[i].bounds.w, tmp_objs[i].bounds.h],
-                                curr.children[quadrant]);
-                    } else {
-                        curr.objs.push(tmp_objs[i]);
-                        tmp_objs[i].overlapping = true;
+                        // if obj in bounds and is bounded by some next quadrant
+                        default:
+                            curr.children[quadrant].objs.push(transfer[i]);
                     }
-                }
-
-                quadrant = this.quad(curr.bounds, o.bounds);
-                if (quadrant != -1) {
-                    curr = curr.children[quadrant];
-                } else {
-                    curr.objs.push(o);
-                    o.overlapping = true;
-                    return 1;
                 }
             }
         }// end loop
@@ -5613,83 +5819,115 @@ function QuadTree(max_objs, max_depth, bounds) {
     }
 
     this.quad = function(space_bounds, obj_bounds) {
-        //--    returns which quadrant obj_bounds' center lies within
-        //--    if space_bounds is split into 4 equal squares
-        //--    returns -1 if center is out of bounds
-        //--    returns 0 if center lies in the North West
-        //--    returns 1 if center lies in the North East
-        //--    returns 2 if center lies in the South East
-        //--    returns 3 if center lies in the South West
+        //--    returns which quadrant obj_bounds' lies within if
+        //--    space_bounds is split into 4 equal squares
+        //--    returns -2 if obj is out of bounds or is overlapping with the space_bounds
+        //--    returns -1 if obj is in bounds but overlaps over at least one next quadrant
+        //--    returns 0 if obj is bounded by the North West quadrant
+        //--    returns 1 if obj is bounded by the North East quadrant
+        //--    returns 2 if obj is bounded by the South East quadrant
+        //--    returns 3 if obj is bounded by the South West quadrant
         //--
 
+        // extra vars help with readability, performance
+        var sleft = space_bounds.x;
+        var stop = space_bounds.y;
+        var sright = space_bounds.x + space_bounds.w;
+        var sbottom = space_bounds.y + space_bounds.h;
         var cx = space_bounds.x + space_bounds.w / 2;
         var cy = space_bounds.y + space_bounds.h / 2;
-        var otop = obj_bounds.y;
         var oleft = obj_bounds.x;
+        var otop = obj_bounds.y;
         var oright = obj_bounds.x + obj_bounds.w;
         var obottom = obj_bounds.y + obj_bounds.h;
-
-        // left
-        if (oright < cx) {
-            // top
-            if (obottom < cy) {
-                return 0;
-            // bottom
-            } else if (otop > cy) {
-                return 3;
+        
+        // if object inside space_bounds
+        if (oleft > sleft && oright < sright &&
+            otop > stop && obottom < sbottom) {
+            
+            if (oright < cx) {
+                
+                // if inside topleft
+                if (obottom < cy) {
+                    return 0;
+                    
+                // if inside bottomleft
+                } else if (otop > cy) {
+                    return 3;
+                }
+                
+            } else if (oleft > cx) {
+                
+                // if inside topright
+                if (obottom < cy) {
+                    return 1;
+                    
+                // if inside bottomright
+                } else if (otop > cy) {
+                    return 2;
+                }
             }
-        // right
-        } else if (oleft > cx) {
-            // top
-            if (obottom < cy) {
-                return 1;
-            // bottom
-            } else if (otop > cy) {
-                return 2;
-            }
+            
+            // if code reaches here, then there
+            // is some internal overlapping
+            return -1;
         }
-
-        return -1;
+        
+        // if code reaches here, then there
+        // at least some of the object has reached
+        // or surpassed the edges of the space_bounds
+        return -2;
     }
 
     this.chop = function(node) {
         //--    populates input node with children
         //--    representing a 4-way split
+        //--    Note: vars help with performance (reduce # ops)
         //--
 
         var A = new QuadTreeNode();
         var B = new QuadTreeNode();
         var C = new QuadTreeNode();
         var D = new QuadTreeNode();
+        
+        A.parent = node;
+        B.parent = node;
+        C.parent = node;
+        D.parent = node;
 
-        A.level = node.level + 1;
-        B.level = node.level + 1;
-        C.level = node.level + 1;
-        D.level = node.level + 1;
+        var next_level = node.level + 1;
+        A.level = next_level;
+        B.level = next_level;
+        C.level = next_level;
+        D.level = next_level;
 
+        var halfw = node.bounds.w / 2;
+        var halfh = node.bounds.h / 2;
+        var cx = node.bounds.x + node.bounds.w / 2;
+        var cy = node.bounds.y + node.bounds.h / 2;
         A.bounds = {
             x:node.bounds.x,
             y:node.bounds.y,
-            w:node.bounds.w / 2,
-            h:node.bounds.h / 2
+            w:halfw,
+            h:halfh
         }
         B.bounds = {
-            x:node.bounds.x + node.bounds.w / 2,
+            x:cx,
             y:node.bounds.y,
-            w:node.bounds.w / 2,
-            h:node.bounds.h / 2
+            w:halfw,
+            h:halfh
         }
         C.bounds = {
-            x:node.bounds.x + node.bounds.w / 2,
-            y:node.bounds.y + node.bounds.h / 2,
-            w:node.bounds.w / 2,
-            h:node.bounds.h / 2
+            x:cx,
+            y:cy,
+            w:halfw,
+            h:halfh
         }
         D.bounds = {
             x:node.bounds.x,
-            y:node.bounds.y + node.bounds.h / 2,
-            w:node.bounds.w / 2,
-            h:node.bounds.h / 2
+            y:cy,
+            w:halfw,
+            h:halfh
         }
 
         node.children.push(A);
@@ -5708,29 +5946,80 @@ function QuadTree(max_objs, max_depth, bounds) {
         this._get(this.root, bounds, objs);
         return objs;
     }
+    
+    this._get_all = function(node,objs) {
+        //--    recursively collects all objects starting from
+        //--    a specific node in the quadtree and marks them
+        //--    as 'selected' (for debugging purposes)
+        //--
+        
+        // set all objects to 'selected'
+        for (var i in node.objs) {
+            node.objs[i].selected = true;
+        }
+        
+        // accumulate all objs of current node into objs list
+        objs.push.apply(objs, node.objs);
+        
+        // if children, recurse using children nodes
+        if (node.children.length) {
+            this._get_all(node.children[0], objs);
+            this._get_all(node.children[1], objs);
+            this._get_all(node.children[2], objs);
+            this._get_all(node.children[3], objs);
+        }
+        
+        // otherwise, we are done
+        return objs;
+    }
 
     this._get = function(node,bounds,objs) {
         //--    recursively searches through the quadtree for
         //--    all the nodes in the cell intersecting with the
-        //--    center of 'bounds', starting from 'node'; 'objs'
+        //--    rect of 'bounds', starting from 'node'; 'objs'
         //--    is filled up with all the objects found and marks
         //--    them as 'selected' (for debugging purposes)
         //--
-
-        var quadrant = this.quad(node.bounds, bounds);
-        for (var i in node.objs) {
-            node.objs[i].selected = true;
-        }
-        objs.push.apply(objs, node.objs);
-        if (quadrant != -1) {
-            if (node.children.length) {
-                this._get(node.children[quadrant], bounds, objs);
-            } else {
-                return;
+        
+        // first, check if this node is a leaf
+        if (!node.children.length) {
+            
+            // set all objects to 'selected'
+            for (var i in node.objs) {
+                node.objs[i].selected = true;
             }
+
+            // accumulate all objs of current node into objs list
+            objs.push.apply(objs, node.objs);
+        
+        // else, node has children
         } else {
-            return;
+        
+            // get quadrant current node fits into
+            var quadrant = this.quad(node.bounds, bounds);
+
+            // if any kind of overlapping, get all objs under this node
+            if (quadrant < 0) {
+                this._get_all(node,objs);
+
+            // else, recurse using the next quadrant
+            } else {
+
+                // set all objects to 'selected'
+                for (var i in node.objs) {
+                    node.objs[i].selected = true;
+                }
+
+                // accumulate all objs of current node into objs list
+                objs.push.apply(objs, node.objs);
+
+                // get from next quadrant
+                this._get(node.children[quadrant], bounds, objs);
+            }
         }
+        
+        // optimized list of objs
+        return objs;
     }
 
     this.clear = function() {
@@ -5738,6 +6027,7 @@ function QuadTree(max_objs, max_depth, bounds) {
         //--    clearing the entire quadtree
         //--
 
+        this.root.parent = null;
         this.root.children = [];
         this.root.level = 0;
         this.root.objs = [];
@@ -5765,6 +6055,7 @@ function QuadTree(max_objs, max_depth, bounds) {
 
             // print obj points
             function draw_objs() {
+                context.beginPath();
                 for (var i in curr.objs) {
                     var o = curr.objs[i];
                     if (o.overlapping) {
@@ -5775,11 +6066,10 @@ function QuadTree(max_objs, max_depth, bounds) {
                     if (o.selected) {
                         context.strokeStyle="orange";
                     }
-                    context.beginPath();
                     context.rect(o.bounds.x, o.bounds.y,
                                       o.bounds.w, o.bounds.h);
-                    context.stroke();
                 }
+                context.stroke();
             }
 
             // save settings of context

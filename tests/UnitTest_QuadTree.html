@@ -53,22 +53,36 @@
 
     var tim = 0;
     
+    // drag box
+    var box = new SimplePoly(Game,
+                             [[0, 0],
+                              [0.01, 0],
+                              [0.01, 0.01],
+                              [0, 0.01]],
+                             true);
+    box.stroke_color = 'rgb(0,0,255)';
+    box.stroke_fill = 'rgba(0,175,255,0.5)';
+    box.hide();
+    
     // Game Loop
     Nickel.update = function() {
-        if (tim <= 1000) {
+        if (tim <= 100) {
             Game.clear();
-            console.log('Drawing Quad Tree...')
+            console.log('Drawing Quad Tree...');
             Game.reset_key_upped();
             
-            var rnd_sz = Nickel.UTILITY.random_number(2,12);
+            var rnd_sz = Nickel.UTILITY.random_number(2,20);
             var random_pt = [Nickel.UTILITY.random_number(0,Game.get_w()),
                              Nickel.UTILITY.random_number(0,Game.get_h())];
             var rnd_cnt2 = Nickel.UTILITY.random_number(1,3);
             
             QT.in('Rand', random_pt, [rnd_sz, rnd_sz]);
-            QT.viz(Game.context);
+            //QT.viz(Game.context);
         }
         tim++;
+        
+        Game.clear();
+        
         /*
         if (Game.mouse_upped == 0) {
             Game.clear();
@@ -78,6 +92,7 @@
             QT.viz(Game.context);
         }
         */
+        /*
         if (Game.mouse_upped == 0) {
             Game.clear();
             console.log('Drawing Quad Tree...');
@@ -86,6 +101,38 @@
             Game.reset_mouse_upped();
             QT.viz(Game.context);
         }
+        */
+        
+        // start
+        if (Game.mouse_curr == 0 && !box.is_visible()) {
+            box.set_pos([Game.mouse_x, Game.mouse_y]);
+            box.show();
+        }
+        
+        // drag
+        if (Game.mouse_curr == 0 && box.is_visible()) {
+            box.vertices[1] = [Game.mouse_x, box.vertices[0][1]];
+            box.vertices[2] = [Game.mouse_x, Game.mouse_y];
+            box.vertices[3] = [box.vertices[0][0], Game.mouse_y];
+        }
+        
+        // stop
+        if (Game.mouse_upped == 0 && box.is_visible()) {
+            box.hide();
+            Game.reset_mouse_upped();
+        
+            // select
+            var output = QT.get([box.x, box.y],
+                  [box.vertices[2][0]-box.x,
+                   box.vertices[2][1]-box.y]);
+            
+            // print
+            console.log(output);
+        }
+        
+        // update
+        QT.viz(Game.context);
+        if (box.is_visible()) {box.update();}
     }
     Game.run();
 

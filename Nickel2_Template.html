@@ -1,0 +1,45 @@
+<!--
+    Nickel2 Template File (quick start)
+--->
+
+<!DOCTYPE HTML>
+
+<html lang="en-US">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Template</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js">
+    </script>
+    <script src = "N2Base.js">
+    </script>
+    <script src = "Nickel2.js">
+    </script>
+    <!-- removes favicon.ico error -->
+    <link rel="shortcut icon" href="">
+</head>
+
+<body>
+    <div id="main">
+    </div>
+</body>
+</html>
+
+<script>
+    
+    // > Game
+    var Game = new Viewport('main');
+    Game.set_bg_color('white');
+    Game.set_size(800,600);
+    
+    // ...CREATE YOUR NICKEL OBJECTS HERE...
+
+    // Game Loop:
+    Nickel.update = function() {
+        
+        // ...UPDATE YOUR NICKEL OBJECTS HERE...
+    }
+    
+    // Start Game:
+    Game.run();
+</script>

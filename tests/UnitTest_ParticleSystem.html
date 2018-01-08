@@ -1,0 +1,170 @@
+<!--
+    test3.html
+    Ibrahim Sardar
+--->
+
+<!DOCTYPE HTML>
+
+<html lang="en-US">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Particle System Demo</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js">
+    </script>
+    <script src = "N2Base.js">
+    </script>
+    <script src = "Nickel2.js">
+    </script>
+    <!-- removes favicon.ico error -->
+    <link rel="shortcut icon" href="">
+</head>
+
+<body style="text-align:center;">
+    <div style='text-align:center;font-family:verdana;font-size:small'>
+        <br>
+        <b>DEMO - By Ibrahim</b><br>
+        <br>
+    </div>
+    <div id="main">
+    </div>
+</body>
+</html>
+
+<script>
+
+    //
+    // Pre Game Initialization
+    //
+    
+    // Game
+    var Game = new Viewport('main');
+    Game.set_bg_color('grey');
+    Game.set_size(1400,700);
+    Game.set_fps(60);
+    
+    // Helper Functions
+    var no_bound = function () {}
+    var wrap_bound = function () {
+        var cx = this.get_cx();
+        var cy = this.get_cy();
+        var gw = this.scene.get_w();
+        var gh = this.scene.get_h();
+        
+        if (cx > gw)
+            this.set_cx(0);
+        else if (cx < 0)
+            this.set_cx(this.scene.get_w());
+        if (cy > this.scene.get_h())
+            this.set_cy(0);
+        else if (cy < 0)
+            this.set_cy(this.scene.get_h());
+    }
+
+    //
+    // Data Dicts
+    //
+
+    // Images
+    var IMG_000 = {w:1400, h:700, img:'bg_light_purple.png'};
+
+    // Grid Data Parts
+    var ROTDATA = {
+        origin : 'mouse', /* Keywords:  mouse  center  ox  oy  */
+        speed  : 6
+    };
+    var ZOOMDATA = {
+        bounds : {'in':6, 'out':0.65},
+        speed  : 1
+    };
+
+    // Grid
+    var GRIDDATA = {
+        scene           : Game,
+        bg_data         : IMG_000,
+        rotation_data   : ROTDATA,
+        zoom_data       : ZOOMDATA
+    };
+    
+    //TODO: DECIMAL SUPPORT - AT LEAST LIKE 3 DECIMALS (so round to 3 decimals)
+    // Particles
+    var PARTICLE_000 = {
+        body                            : ParticleBuilder.CODES.RECTANGLE,
+        size                            : [12,12],
+        stroke_color                    : 'RED',
+        stroke_fill                     : 'PINK',
+        stroke_width                    : 1,
+        context                         : Game.context,
+        lifetime_mseconds               : 8000,
+        start_position_vector           : [15,45],
+        scale_vector                    : [1,1],
+        scale_mult_variation_vector     : [[1,1],[1,1]],
+        rotation_degrees                : 0,     //NOT WORKING
+        rotation_variation_degrees      : [0,0], //NOT WORKING
+        velocity_vector                 : [1,0],
+        velocity_variation_vector       : [[6,-6],[4,-4]],
+        acceleration_vector             : [0,0],
+        acceleration_variation_vector   : [[0,0],[0,0]]
+    }
+    
+    // Particle Systems
+    var PSDATA = {
+        particle_data       : PARTICLE_000,
+        scene               : Game,
+        lifetime_mseconds   : 15000,
+        position            : [300, 150],
+        rotation            : 0,
+        scale               : 1
+    }
+    
+    //
+    //  Create Objects
+    //
+    
+    // Grid
+    var World = new Grid(GRIDDATA);
+    
+    // TODO: FIX - DOES NOT WORK
+    // Particle System
+    /*var PS = new ParticleSystem(PSDATA);
+    for (var i=0; i<100; i++) {
+        var particle = new Particle(PS.particle_data);
+        PS.queue.in(particle);
+    }
+    //*/
+    
+    // Particle
+    var particle_01 = new Particle(PARTICLE_000);
+    //*/
+    
+    //
+    //  Load assets into world
+    //
+    //...
+    
+    //
+    //  Game Loop
+    //
+    Nickel.update = function() {
+        
+        // Clear canvas
+        Game.clear();
+        
+        // Update grid and all its contents
+        World.update();
+        
+        // update particle system (just testing/messing around)
+        //PS.update();
+        particle_01.update();
+    }
+    
+    //
+    //  Start Game (after everything is loaded)
+    //
+    $(window).on("load", function() {
+        Game.run();
+    });
+        
+</script>
+
+

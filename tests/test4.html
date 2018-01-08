@@ -1,0 +1,422 @@
+<!--
+    test3.html
+    Ibrahim Sardar
+--->
+
+<!DOCTYPE HTML>
+
+<html lang="en-US">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Seek & Collision Demo</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js">
+    </script>
+    <script src = "N2Base.js">
+    </script>
+    <script src = "Nickel2.js">
+    </script>
+    <!-- removes favicon.ico error -->
+    <link rel="shortcut icon" href="">
+</head>
+
+<body style="text-align:center;">
+    <div style='text-align:center;font-family:verdana;font-size:small'>
+        <br>
+        <b>DEMO - By Ibrahim</b><br>
+        <br>
+    </div>
+    <div id="main">
+    </div>
+</body>
+</html>
+
+<script>
+
+    //
+    // Pre Game Initialization
+    //
+    
+    // Game
+    var Game = new Viewport('main');
+    Game.set_bg_color('grey');
+    Game.set_size(1400,700);
+    Game.set_fps(60);
+    
+    // Helper Functions
+    var no_bound = function () {}
+    var wrap_bound = function () {
+        var cx = this.get_cx();
+        var cy = this.get_cy();
+        var gw = this.scene.get_w();
+        var gh = this.scene.get_h();
+        
+        if (cx > gw)
+            this.set_cx(0);
+        else if (cx < 0)
+            this.set_cx(this.scene.get_w());
+        if (cy > this.scene.get_h())
+            this.set_cy(0);
+        else if (cy < 0)
+            this.set_cy(this.scene.get_h());
+    }
+
+    //
+    // Data Dicts
+    //
+    
+    // Sprites
+    var WALLDATA = {img:'wall.png', w:40, h:40};
+    var FISHDATA = {img:'fish.png', w:64, h:64};
+    var SHIPDATA = {scene:Game,
+                    img_data:{img:'arrow.png', w:22, h:10},
+                    hull_exists:true,
+                    hull:null,
+                    max_rot:5
+                   };
+
+    // Images
+    var IMG_000 = {w:1400, h:700, img:'bg_forest_mtns.png'};
+
+    // Grid Data Parts
+    var ROTDATA = {
+        origin : 'mouse', /* Keywords:  mouse  center  ox  oy  */
+        speed  : 6
+    };
+    var ZOOMDATA = {
+        bounds : {'in':6, 'out':0.65},
+        speed  : 1
+    };
+
+    // Grid
+    var GRIDDATA = {
+        scene           : Game,
+        bg_data         : IMG_000,
+        rotation_data   : ROTDATA,
+        zoom_data       : ZOOMDATA
+    };
+    
+    //
+    //  Create Objects
+    //
+    
+    // Grid
+    var World = new Grid(GRIDDATA);
+    
+    // Quadtree (for collision optimization)
+    var qtShips = new QuadTree(1,5,Game.get_bounds());
+    var qtWalls = new QuadTree(1,5,Game.get_bounds());
+    
+    // Sprites
+    var Fish = new Sprite(Game, FISHDATA);
+    var Wall = new Sprite(Game, WALLDATA);
+    
+    //
+    // Init Sprites
+    //
+    
+    // Fish
+    Fish.set_center(100, Game.get_h()/2);
+    Fish.bound = wrap_bound;
+    Fish.set_origin_centered();
+    Fish.hull.approximate_shape();
+    Fish.hull.shape.stroke_color = 'red';
+    Fish.hull.shape.stroke_width = 3;
+    Fish.update_more = function() {this.hull.shape.update();}
+    
+    // Fish speed
+    var fmove = {x:2, y:0, rot:0};
+    
+    // Walls
+    Wall.bound = no_bound;
+    Walls = [];
+    for (var x = 0; x < 15; x++) {
+        
+        //  1st wall (thin)
+        var _wall1 = Wall.copy_base();
+        _wall1.set_pos(300,x*Wall.get_h());
+        Walls.push(_wall1);
+        
+        //  2nd wall (med)
+        var _wall2 = Wall.copy_base();
+        _wall2.set_pos(500,x*Wall.get_h());
+        Walls.push(_wall2);
+        var _wall3 = Wall.copy_base();
+        _wall3.set_pos(500+Wall.get_w(),x*Wall.get_h());
+        Walls.push(_wall3);
+        
+        //  3rd wall (thick)
+        var _wall4 = Wall.copy_base();
+        _wall4.set_pos(900,x*Wall.get_h());
+        Walls.push(_wall4);
+        var _wall5 = Wall.copy_base();
+        _wall5.set_pos(900+Wall.get_w(),x*Wall.get_h());
+        Walls.push(_wall5);
+        var _wall6 = Wall.copy_base();
+        _wall6.set_pos(900+Wall.get_w()+Wall.get_w(),x*Wall.get_h());
+        Walls.push(_wall6);
+        
+        // junk
+        _wall1.hull.shape.stroke_color='yellow';_wall1.update_more = function(){this.hull.shape.update();}
+        _wall2.hull.shape.stroke_color='yellow';_wall2.update_more = function(){this.hull.shape.update();}
+        _wall3.hull.shape.stroke_color='yellow';_wall3.update_more = function(){this.hull.shape.update();}
+        _wall4.hull.shape.stroke_color='yellow';_wall4.update_more = function(){this.hull.shape.update();}
+        _wall5.hull.shape.stroke_color='yellow';_wall5.update_more = function(){this.hull.shape.update();}
+        _wall6.hull.shape.stroke_color='yellow';_wall6.update_more = function(){this.hull.shape.update();}
+    }
+    var err_fnd = false;
+    // Ships
+    Ships = [];
+    for (var i = 0; i < 33; i++) {
+        
+        // get random top x pos
+        var tx = Nickel.UTILITY.random_number(20,220);
+        // get random top y pos
+        var ty = Nickel.UTILITY.random_number(20,320);
+        // get random bottom x pos
+        var bx = Nickel.UTILITY.random_number(20,220);
+        // get random bottom y pos
+        var by = Nickel.UTILITY.random_number(380,680);
+        // get random speed
+        var rnd_spd = Nickel.UTILITY.random_number(135,140) / 10;
+        
+        // create top ship
+        var _tship = new Locomotive(SHIPDATA);
+        _tship.update();
+        _tship.bound = no_bound;
+        // position top ship
+        _tship.set_center(tx, ty);
+        // start moving top ship
+        _tship.set_speed(rnd_spd);
+        // add top ship to ship list
+        Ships.push(_tship);
+        
+        // create bottom ship
+        var _bship = new Locomotive(SHIPDATA);
+        _bship.update();
+        _bship.bound = no_bound;
+        // position bottom ship
+        _bship.set_center(bx, by);
+        // start moving bottom ship
+        _bship.set_speed(rnd_spd);
+        // add bottom ship to ship list
+        Ships.push(_bship);
+        
+        // Change top and bottom ship collision hull shapes to circles
+        var tcircle = new SimpleCircle(Game, _tship.get_w()/2);
+        tcircle.set_center(_tship.get_pos2());
+        _tship.hull.set_shape(tcircle);
+        var bcircle = new SimpleCircle(Game, _bship.get_w()/2);
+        bcircle.set_center(_bship.get_pos2());
+        _bship.hull.set_shape(bcircle);
+    }
+    
+    //
+    //  Load assets into world
+    //
+    World.load_sprite(Fish);
+    World.load_sprites(Walls);
+    World.load_sprites(Ships);
+    
+    //
+    //  Game Loop
+    //
+    Nickel.update = function() {
+        
+        // Clear canvas
+        Game.clear();
+        
+        // Update grid and all its contents
+        World.update();
+        
+        // Reset some fish movement speeds
+        fmove.rot = 0;
+        fmove.y = 0;
+        
+        // Fish movement controls
+        if (Game.key_curr == Nickel.KEYCODES.RIGHTARROW){
+            fmove.x += 0.2;
+        }
+        if (Game.key_curr == Nickel.KEYCODES.LEFTARROW){
+            fmove.x -= 0.2;
+        }
+        if (Game.key_curr == Nickel.KEYCODES.UPARROW){
+            fmove.y = -fmove.x;
+            fmove.rot = 45;
+        }
+        if (Game.key_curr == Nickel.KEYCODES.DOWNARROW){
+            fmove.y = fmove.x;
+            fmove.rot = -45;
+        }
+        
+        // Bound fish speeds
+        if (fmove.x > 16) {
+            fmove.x = 16
+            if (fmove.y > 0) {
+                fmove.y = 16;
+            }
+            if (fmove.y < 0) {
+                fmove.y = -16;
+            }
+        }
+        if (fmove.x < 1) {
+            fmove.x = 1
+            if (fmove.y > 0) {
+                fmove.y = 1;
+            }
+            if (fmove.y < 0) {
+                fmove.y = -1;
+            }
+        }
+        
+        // Move fish
+        Fish.set_speed(Math.sqrt(fmove.x*fmove.x + fmove.y*fmove.y));
+        Fish.set_turn(fmove.rot);
+        
+        // Ship behaviour
+        for (var i in Ships) {
+            Ships[i].seek(Fish,Ships[i].get_speed(),Ships[i].get_accel());
+        }
+        
+        //
+        // Collisions
+        //
+        
+        // Ship v Ship
+        /*for (var i in Ships) {
+            for (var j in Ships) {
+                if (i!=j) {
+                    if (Ships[i].resolve_with(Ships[j],false,true,true,1,1,
+                                              Ships[i].get_velocity(),
+                                              Ships[j].get_velocity())){
+                        //...
+                    }
+                }
+            }
+        }*/
+        
+        var t0 = performance.now();
+        
+        // slow version
+        /***
+        // Ship v Wall
+        for (var i in Ships) {
+            for (var j in Walls) {
+                if (Ships[i].resolve_with(Walls[j],false,true,true,0,1,
+                                          Ships[i].get_velocity(),
+                                          Walls[j].get_velocity())){
+                    //...
+                }
+            }
+        }
+        
+        // Wall v Wall
+        for (var i in Walls) {
+            for (var j in Walls) {
+                if (Walls[i].id != Walls[j].id &&
+                    Walls[i].resolve_with(Walls[j],false,true,true,1,1,
+                                          Walls[i].get_velocity(),
+                                          Walls[j].get_velocity())){
+                    //...
+                }
+            }
+        }
+        
+        // Fish v Wall
+        for (var i in Walls) {
+            if (Fish.resolve_with(Walls[i],false,true,true,2,1,
+                                  Fish.get_velocity(),
+                                  Walls[i].get_velocity())){
+                //...
+            }
+        }
+        //***/
+        
+        // fill up quadtrees for performance boost
+        /**
+        for (var i in Ships)
+            qtShips.in(Ships[i], [Ships[i].get_left(), Ships[i].get_top()],
+                                 [Ships[i].get_w_bound(), Ships[i].get_h_bound()]);
+        **/
+        //**
+        for (var i in Walls)
+            qtWalls.in(Walls[i], [Walls[i].get_left(), Walls[i].get_top()],
+                                 [Walls[i].get_w_bound(), Walls[i].get_h_bound()]);
+        
+        // Ship v Wall
+        for (var i in Ships) {
+            var nearWalls = qtWalls.get([Ships[i].get_left(), Ships[i].get_top()],
+                                        [Ships[i].get_w_bound(), Ships[i].get_h_bound()]);
+            
+            for (var j in nearWalls) {
+                if (Ships[i].resolve_with(nearWalls[j].entity,false,true,true,1,10,
+                                          Ships[i].get_velocity(),
+                                          nearWalls[j].entity.get_velocity())){
+                    //...
+                }
+            }
+        }
+        
+        // Wall v Wall
+        for (var i in Walls) {
+            var nearWalls = qtWalls.get([Walls[i].get_left(), Walls[i].get_top()],
+                                        [Walls[i].get_w_bound(), Walls[i].get_h_bound()]);
+            for (var j in nearWalls) {
+                if (Walls[i].id != nearWalls[j].entity.id &&
+                    Walls[i].resolve_with(nearWalls[j].entity,false,true,false,1,1,
+                                          Walls[i].get_velocity(),
+                                          nearWalls[j].entity.get_velocity())){
+                    //...
+                }
+            }
+        }
+        
+        // Fish v Wall
+        var nearWalls = qtWalls.get([Fish.get_left(), Fish.get_top()],
+                                    [Fish.get_w_bound(), Fish.get_h_bound()]);
+        for (var i in nearWalls) {
+            if (Fish.resolve_with(nearWalls[i].entity,false,true,true,2,1,
+                                  Fish.get_velocity(),
+                                  nearWalls[i].entity.get_velocity())){
+                //...
+            }
+        }
+        qtWalls.viz(Game.context);
+        qtWalls.clear();
+        //**/
+        var t1 = performance.now();
+        //console.log(t1-t0 + "ms");
+        var sq = new SimplePoly(Game, [[Fish.bbox.left, Fish.bbox.top],
+                                       [Fish.bbox.right, Fish.bbox.top],
+                                       [Fish.bbox.right, Fish.bbox.bottom],
+                                       [Fish.bbox.left, Fish.bbox.bottom]], true);
+        sq.stroke_color = 'yellow';
+        sq.update();
+        
+        //junk------------------------------
+        var flag = false;
+        for (var i in Walls) {
+            if (isNaN(Walls[i].x) || isNaN(Walls[i].hull.shape.x) || isNaN(Walls[i].hull.shape.tracker[0]))
+                flag = true;
+        }
+        for (var i in Ships) {
+            if (isNaN(Ships[i].x) || isNaN(Ships[i].hull.shape.cx) || isNaN(Ships[i].hull.shape.tracker[0]))
+                flag = true;
+        }
+        if (flag) {
+            console.error("ERROR - Game halted.");
+            Game.pause();
+        }
+        //end junk--------------------------
+    }
+    
+    //
+    //  Start Game (after everything is loaded)
+    //
+    $(window).on("load", function() {
+        Game.run();
+    });
+        
+</script>
+
+

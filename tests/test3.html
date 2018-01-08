@@ -79,7 +79,7 @@
     var B = new Sprite(Game,Bdata);
     var C = new Sprite(Game,Cdata);
     var D = new Sprite(Game,Ddata);
-    var Fish = new Sprite(Game,FISHDATA2,true);
+    var Fish = new Sprite(Game,FISHDATA2,true/*,null,false*/);
     var Fool = new Sprite(Game,FISHDATA,true);
     var Arrow = new Sprite(Game,ARROWDATA,true);
     var Sel = new Sprite(Game,SELDATA);
@@ -153,15 +153,16 @@
     // Grid Data Parts
     var SCROLLDATA = {
         bounds : {'top': 300, 'left': 500, 'right': 500, 'bottom': 300},
-        buffer : 35,
-        speed  : 5
+        buffer : 8,
+        speed  : 3
     };
     var ROTDATA = {
         origin : 'mouse', /* Keywords:  mouse  center  ox  oy  */
         speed  : 10
     };
     var ZOOMDATA = {
-        bounds : {'in': 4, 'out': 0.65},
+        //bounds : {'in': 4, 'out': 0.65},
+        bounds : {'in': 25, 'out': 0.15},
         speed  : 1
     };
     var NODEDATA = {
@@ -529,6 +530,7 @@
         if (Fish.dead)
             FOV_Fish.destroy();
     }
+    Fish.set_center(400,300);
     Fish.update();
     
     // prepare Ships and their FOVs as well as the flee object
@@ -787,13 +789,26 @@
         //WList[w].hull.approximate_shape();
         WList[w].hull.shape.stroke_color = 'YELLOW';
         WList[w].hull.shape.stroke_width = 4;
-        WList[w].update_more = function () {this.hull.shape.update(); /*this.offset_rotation(5);*/}
+        WList[w].update_more = function () {this.hull.shape.update(); /*this.offset_rotation(2);*/}
     }
     
     /*
     for (var s in Ships) {
         Ships[s][0].hull.approximate_shape();
     }*/
+    
+    
+    // load everything into the grid
+    World.load_sprite(Fish);
+    World.load_sprite(FOV_Fish);
+    World.load_sprite(StartMarker);
+    World.load_sprite(EndMarker);
+    World.load_sprites(UList);
+    World.load_sprites(WList);
+    for (var i in Ships) {
+        World.load_sprite(Ships[i][0]);
+        World.load_sprite(Ships[i][1]);
+    }
     
     
     Game.set_fps(60);
@@ -840,14 +855,14 @@
         //for (var i in UList) {UList[i].update();}
         /////////////////TEST.update();
         
-        
+        /*
         //for (var i in WList)
         //    WList[i].update();
         for (var i in UList)
             UList[i].update();
         StartMarker.update();
         EndMarker.update();
-        
+        */
         /*
         for (var i in WList)
             WList[i].offset_turn(1);
@@ -861,7 +876,7 @@
         **/
         //**
         // TEST #2
-        Fish.update();
+        //Fish.update();
         for (var i in Ships) {
             if (Ships[i][0].arrived == false) {
             //    Ships[i][0].seek([Fish.get_cx(),Fish.get_cy() - SHIPDATA.fov_radius + 5]); * /
@@ -879,12 +894,12 @@
                 if (fstate == 0)
                     Ships[i][0].wander(0.4,90,5);
             }
-            Ships[i][0].update();
+            //Ships[i][0].update();
             Ships[i][1].cx = Ships[i][0].get_cx();
             Ships[i][1].cy = Ships[i][0].get_cy();
             //Ships[i][1].update();
         }
-        FOV_Fish.update();
+        //FOV_Fish.update();
         //**/
         
         /** / TEST #3
@@ -1017,6 +1032,7 @@
             }
         }
         
+        /**
         // lastly update the ships and blocks
         for (var i in Ships)
             Ships[i][1].update();
@@ -1075,9 +1091,13 @@
         }
         /***************/
     }
-
-    // Start the game   (..by now, everything on the page will have loaded)
-    Game.run();
+    
+    //
+    //  Start Game (after everything is loaded)
+    //
+    $(window).on("load", function() {
+        Game.run();
+    });
 
 
 

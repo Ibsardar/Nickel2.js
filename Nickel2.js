@@ -58,6 +58,27 @@ function Locomotive(loco_data) {
 
 
 
+////////////////////////////////////////////
+///   PARTICLE   ///////////////////////////
+////////////////////////////////////////////
+function Particle(particle_data) {
+    
+    ParticleBuilder.create_particle(this, particle_data);
+}
+
+
+
+////////////////////////////////////////////
+///   PARTICLE SYSTEM   ////////////////////
+////////////////////////////////////////////
+function ParticleSystem(system_data) {
+    
+    ParticleSystemBuilder.create_particle_system_base(this, system_data);
+    ParticleSystemBuilder.specialize_particle_system(this, system_data.type);
+}
+
+
+
 // --
 // ------- UTILITY OBJECTS -----------------------------------
 // --
@@ -236,7 +257,7 @@ var Pathfinder = {
     
     ,
     
-    // TODO: OPTIMIZE TYPE CHECKING, OPTIMIZE LOOP, REDO WITH LINESEG INSTEAD OF RAY
+    // TODO: OPTIMIZE TYPE CHECKING, OPTIMIZE LOOP, RENAME TO is_in_los CAREFULLY (AFTER DELETING ORIGINAL is_in_los)
     is_in_los2          : function(start,end,obstructions) {
         //--    returns true if there is nothing blocking
         //--    the view from start to end
@@ -1090,34 +1111,45 @@ var GridBuilder = {
         }
 
         //tiled map
-        grid.map = [];
-        for (var x in matrix[0]) {
+        if (matrix && matrix[0]) {
+            
+            grid.map = [];
+            for (var x in matrix[0]) {
 
-            grid.map.push([]);
-            for (var y in matrix) {
+                grid.map.push([]);
+                for (var y in matrix) {
 
-                var tile = new Tile( types[matrix[y][x]] );
-                tile.set_pos( tile.get_w()*x, tile.get_h()*y );
-                grid.map[x].push(tile);
+                    var tile = new Tile( types[matrix[y][x]] );
+                    tile.set_pos( tile.get_w()*x, tile.get_h()*y );
+                    grid.map[x].push(tile);
+                }
             }
+
+            //tiles
+            grid.tiles_south = matrix.length;
+            grid.tiles_east = matrix[0].length;
+
+            //dimensions
+            grid.width_orig = 0;
+            grid.height_orig = 0;
+            for (var x=0 ; x<grid.tiles_east ; x++) {
+                grid.width_orig += grid.map[x][0].get_w();
+            }
+            for (var y=0 ; y<grid.tiles_south ; y++) {
+                grid.height_orig += grid.map[0][y].get_h();
+            }
+            if (grid.bg && grid.width_orig < grid.bg.get_w()) grid.width_orig = grid.bg.get_w();
+            if (grid.bg && grid.height_orig < grid.bg.get_h()) grid.height_orig = grid.bg.get_h();
+        } else {
+            
+            grid.map = [];
+            grid.tiles_south = 0;
+            grid.tiles_east = 0;
+            grid.width_orig = grid.bg.get_w();
+            grid.height_orig = grid.bg.get_h();
         }
 
-        //tiles
-        grid.tiles_south = matrix.length;
-        grid.tiles_east = matrix[0].length;
-
-        //dimensions
-        grid.width_orig = 0;
-        grid.height_orig = 0;
-        for (var x=0 ; x<grid.tiles_east ; x++) {
-            grid.width_orig += grid.map[x][0].get_w();
-        }
-        for (var y=0 ; y<grid.tiles_south ; y++) {
-            grid.height_orig += grid.map[0][y].get_h();
-        }
-        if (grid.bg && grid.width_orig < grid.bg.get_w()) grid.width_orig = grid.bg.get_w();
-        if (grid.bg && grid.height_orig < grid.bg.get_h()) grid.height_orig = grid.bg.get_h();
-
+        // TODO: OPTIMIZE AAAAAAHHHH!!!
         //rect
         var grid_rect = {
             w : grid.width_orig,
@@ -1127,13 +1159,27 @@ var GridBuilder = {
         grid.rect.bound = function() {};
         grid.rect.set_pos(0,0);
 
+        // TODO: OPTIMIZE AAAAAAHHHH!!!
         //bounding box
         grid.bbox = new Sprite(grid.scene, grid_rect);
         grid.bbox.bound = function() {};
         grid.bbox.set_pos(0,0);
         
-        //accessors
-        grid.get_tile = function(pt) {return grid.map[pt[0]][pt[1]]};
+        //storage (holds sprites to be updated with the grid)
+        grid.load = [];
+        
+        //getters
+        grid.get_tile = function(pt) {return grid.map[pt[0]][pt[1]];}
+        grid.get_load = function() {return this.load;}
+        grid.get_bounds = function() {
+            return {x:grid.rect.get_x(), y:grid.rect.get_y(),
+                    w:grid.width_orig, h:grid.height_orig};
+        }
+        
+        //setters
+        grid.load_sprite = function(spr) {this.load.push(spr);}
+        grid.load_sprites = function(sprs) {this.load.push(...sprs);}
+        grid.empty_load = function() {this.load = [];}
 
         //transformation update
         grid.update_transformations = function() {
@@ -1226,6 +1272,11 @@ var GridBuilder = {
                     grid.map[x][y].update();
                 }
             }
+            
+            //loaded sprites
+            for (var i in grid.load) {
+                grid.load[i].update();
+            }
 
             //navmesh
             if (grid.nav) grid.nav.update();
@@ -1272,6 +1323,10 @@ var GridBuilder = {
                 offy = grid.scene.get_h() - tdata.bounds.bottom - b;
             }
 
+            // ignore translation if nothing to translate
+            if (!offx && !offy)
+                return;
+            
             //background
             if (grid.bg) grid.bg.offset_position(offx,offy);
 
@@ -1288,6 +1343,10 @@ var GridBuilder = {
                 }
             }
 
+            //loaded sprites
+            for (var i in grid.load) {
+                grid.load[i].offset_position(offx,offy);
+            }
         }
     }
 
@@ -1315,6 +1374,11 @@ var GridBuilder = {
                 for (var y in grid.map[x]) {
                     grid.map[x][y].offset_turn(angle,origin);
                 }
+            }
+            
+            //loaded sprites
+            for (var i in grid.load) {
+                grid.load[i].offset_turn(angle,origin);
             }
         }
 
@@ -1371,6 +1435,11 @@ var GridBuilder = {
                 for (var y in grid.map[x]) {
                     grid.map[x][y].offset_scale(scale,origin);
                 }
+            }
+            
+            //loaded sprites
+            for (var i in grid.load) {
+                grid.load[i].offset_scale(scale,origin);
             }
         }
 
@@ -1657,15 +1726,13 @@ var NavNodeBuilder = {
             
             node.spr = new Sprite(node.data.grid.scene, node.data.spr_data, true);
             node.spr.bound = function() {};
-            node.spr.set_origin_centered(); ///new update HERE********************************
+            node.spr.set_origin_centered();
             node.til = node.data.tile;
             
             node.update = function() {
                 if (node.P) {
                     var par = node.data.grid.map[node.P.x][node.P.y];
                     node.spr.turn_to(par);
-                    //console.log(node.spr.get_center()+" , "+par.get_center());
-                    //node.spr.turn_to([0,0]);
                 }
                 node.spr.set_center(node.til.get_cx(), node.til.get_cy());
                 if (node.P) node.spr.update();
@@ -1704,6 +1771,27 @@ var LocomotiveBuilder = {
             unit.set_hull(loco_data.hull);
         else if (loco_data.hull_exists)
             unit.set_hull(new ColliderHull(unit));
+        
+        // edit basic copy ability
+        var copy_base_original = unit.copy_base;
+        unit.copy_base = function() {
+            
+            var copy = copy_base_original.apply(unit);
+            copy.type = unit.type;
+            copy.bound = unit.bound
+            copy.set_origin_centered();
+            copy.set_rot_max(unit.get_rot_max());
+        }
+        
+        // edit frozen copy ability
+        var copy_frozen_original = unit.copy_frozen;
+        unit.copy_frozen = function() {
+            
+            var copy = copy_frozen_original.apply(unit);
+            copy.type = unit.type;
+            copy.bound = unit.bound
+            copy.set_origin_centered();
+        }
         
         // return object
         return unit;
@@ -2166,3 +2254,341 @@ var LocomotiveBuilder = {
     }
 }//end locomotive builder
 
+
+
+////////////////////////////////////////////
+///   PARTICLE BUILDER   ///////////////////
+////////////////////////////////////////////
+var ParticleBuilder = {
+    
+    // list of codes used for efficiency purposes
+    CODES : {
+        RECTANGLE : 1,
+        ELLIPSE   : 2,
+        PIXEL     : 3
+    }
+    
+    ,
+    
+    // only supports rectangles, triangles, ellipses, or pixels
+    _create_particle_body : function(particle, particle_data) {
+        
+        if (particle_data.image) {
+            
+            particle.body = new Image();
+            particle.body.src = particle_data.image;
+            particle.size = particle_data.image_size;
+            
+        } else if (particle_data.shape) {
+            
+            particle.body = particle_data.shape;
+            particle.stroke_color = particle_data.stroke_color;
+            particle.stroke_width = particle_data.stroke_width;
+            particle.stroke_fill  = particle_data.stroke_fill;
+            
+        } else {
+            
+            // default to a rectangle
+            particle.body = ParticleBuilder.CODES.RECTANGLE;
+            
+            // default to a black outline
+            particle.stroke_color = 'BLACK';
+            particle.stroke_width = 1;
+            particle.stroke_fill = 'NONE';
+        }
+    }
+    
+    ,
+    
+    create_particle : function(particle, particle_data) {
+        
+        // set properties
+        particle.id = Nickel.UTILITY.assign_id();
+        particle.type = 'Particle';
+        particle.context = particle_data.context;
+        particle.dead = false;
+        particle.time_past = 0; // time past so far
+        particle.time_total = particle_data.lifetime_mseconds;
+        particle.time_start = performance.now();
+        particle.pos = particle_data.start_position_vector;
+        particle.size = particle_data.size;
+        particle.scale = particle_data.scale_vector;
+        particle.scaleg = [1,1];
+        particle.scalev = particle_data.scale_mult_variation_vector;
+        particle.rot  = particle_data.rotation_degrees * Math.PI / 180;
+        particle.rotv = [particle_data.rotation_variation_degrees[0] * Math.PI / 180,
+                         particle_data.rotation_variation_degrees[1] * Math.PI / 180];
+        particle.rot = particle.rot + Nickel.UTILITY.random_number(particle.rotv[0],
+                                                                   particle.rotv[1]);
+        particle.vel  = particle_data.velocity_vector;
+        particle.velv = particle_data.velocity_variation_vector;
+        particle.acc  = particle_data.acceleration_vector;
+        particle.accv = particle_data.acceleration_variation_vector;
+        
+        // ceate body of particle
+        ParticleBuilder._create_particle_body(particle, particle_data.body);
+        
+        // create update function
+        // - updates the image of the body
+        particle.update = function() {
+            
+            // check death condition
+            if (particle.dead)
+                return;
+            
+            // update pseudo timer
+            // get the amount of milliseconds that have past so far
+            particle.time_past = performance.now() - particle.time_start;
+            
+            // skip if lifetime is up
+            if (particle.time_past >= particle.time_total) {
+                particle.dead = true;
+                return;
+            }
+
+            // custom update
+            particle.update_more();
+
+            // update all movement
+            particle.move();
+            
+            // draws image of body
+            particle.draw();
+        }
+        
+        // create draw function
+        // - draws image of body
+        if (particle_data.image) {
+            particle.draw = function() {
+                var ctx = particle.context;
+                ctx.save();
+                ctx.translate(particle.pos[0] + particle.size[0]/2,
+                              particle.pos[1] + particle.size[1]/2);
+                ctx.rotate(particle.rot);
+                ctx.translate(-particle.size[1]/2, -particle.size[0]/2);
+
+                ctx.drawImage(particle.image, 0, 0,
+                              particle.size[0] * particle.scale[0] * particle.scaleg[0],
+                              particle.size[1] * particle.scale[1] * particle.scaleg[1]);
+                //ctx.transform(1,0,0,1,0,0); // faster than save & restore
+                ctx.restore();
+            }
+        } else {
+            
+            switch (particle.body) {
+                case ParticleBuilder.CODES.RECTANGLE:
+                    particle.draw = function() {
+                        var ctx = particle.context;
+                        ctx.save();
+                        ctx.translate(particle.pos[0] + particle.size[0]/2,
+                                      particle.pos[1] + particle.size[1]/2);
+                        ctx.rotate(particle.rot);
+                        ctx.translate(-particle.size[1]/2, -particle.size[0]/2);
+                        
+                        ctx.beginPath();
+                        ctx.lineWidth   = particle_data.stroke_width;
+                        ctx.fillStyle   = particle_data.stroke_fill;
+                        ctx.strokeStyle = particle_data.stroke_color;
+                        ctx.rect(0, 0,
+                                 particle.size[0] * particle.scale[0] * particle.scaleg[0],
+                                 particle.size[1] * particle.scale[1] * particle.scaleg[1]);
+                        ctx.fill();
+                        ctx.stroke();
+                        //ctx.transform(1,0,0,1,0,0); // faster than save & restore
+                        ctx.restore();
+                    }
+                    break;
+                
+                case ParticleBuilder.CODES.ELLIPSE:
+                    particle.draw = function() {
+                        var ctx = particle.context;
+                        ctx.save();
+                        ctx.translate(particle.pos[0] + particle.size[0]/2,
+                                      particle.pos[1] + particle.size[1]/2);
+                        ctx.rotate(particle.rot);
+                        ctx.translate(-particle.size[1]/2, -particle.size[0]/2);
+                        
+                        ctx.beginPath();
+                        ctx.lineWidth   = particle_data.stroke_width;
+                        ctx.fillStyle   = particle_data.stroke_fill;
+                        ctx.strokeStyle = particle_data.stroke_color;
+                        ctx.ellipse(0, 0,
+                                    particle.size[0] * particle.scale[0] * particle.scaleg[0],
+                                    particle.size[1] * particle.scale[1] * particle.scaleg[1]);
+                        ctx.fill();
+                        ctx.stroke();
+                        //ctx.transform(1,0,0,1,0,0); // faster than save & restore
+                        ctx.restore();
+                    }
+                    break;
+            }// end switch
+        }
+        
+        // create move function
+        // - moves image of body
+        particle.move = function() {
+            
+            // scale
+            particle.scale = [particle.scale[0] * Nickel.UTILITY.random_number(particle.scalev[0][0],
+                                                                               particle.scalev[0][1]),
+                              particle.scale[1] * Nickel.UTILITY.random_number(particle.scalev[1][0],
+                                                                               particle.scalev[1][1])];
+            
+            // rotation
+            particle.rot = Nickel.UTILITY.random_number(particle.rotv[0],
+                                                        particle.rotv[1]);
+            
+            // acceleration
+            var tmp_acc  = [particle.acc[0] + Nickel.UTILITY.random_number(particle.accv[0][0],
+                                                                           particle.accv[0][1]),
+                            particle.acc[1] + Nickel.UTILITY.random_number(particle.accv[1][0],
+                                                                           particle.accv[1][1])];
+            
+            // veocity
+            particle.vel = Nickel.UTILITY.add_vector(particle.vel, tmp_acc);
+            var tmp_vel  = [particle.vel[0] + Nickel.UTILITY.random_number(particle.velv[0][0],
+                                                                           particle.velv[0][1]),
+                            particle.vel[1] + Nickel.UTILITY.random_number(particle.velv[1][0],
+                                                                           particle.velv[1][1])];
+            
+            // position
+            particle.pos = Nickel.UTILITY.add_vector(particle.pos, tmp_vel);
+            var cs = Math.cos(particle.rot);
+            var sn = Math.sin(particle.rot);
+            particle.pos = [particle.pos[0] * cs - particle.pos[1] * sn,
+                            particle.pos[0] * sn + particle.pos[1] * cs];
+        }
+        
+        // create update_more function
+        // - allows for custom update add-ons by user
+        particle.update_more = function() {}
+    }
+    
+}//end particle builder
+
+
+
+////////////////////////////////////////////
+///   PARTICLE SYSTEM BUILDER   ////////////
+////////////////////////////////////////////
+var ParticleSystemBuilder = {
+    
+    // template particle systems for quick setup/use
+    TYPES : {
+        CUSTOM : 0,
+        FIRE : 1,
+        WATER : 2,
+        SMOKE : 3,
+        JET : 4,
+        EXPLOSION : 5,
+        SPIRAL : 6,
+        PULSE : 7
+    }
+    
+    ,
+    
+    // TODO.......................................................................HERE..........................
+    create_particle_system_base : function(sys, sys_data) {
+        
+        // usual stuff
+        sys.id = Nickel.UTILITY.assign_id();
+        sys.type = 'ParticleSystem';
+        
+        // this canvas will be a buffer; i.e. all particles
+        // will be painted onto this first, then global
+        // transformations will be applied, then finally the
+        // buffer will be painted onto the main context as
+        // an image
+        sys.buffer = document.createElement('canvas');
+        sys.buffer.width = sys_data.scene.get_w();
+        sys.buffer.height = sys_data.scene.get_h();
+        sys.context = sys.buffer.getContext('2d');
+        sys_data.particle_data.context = sys.context;
+        sys.scene = sys_data.scene;
+        sys.particle_data = sys_data.particle_data;
+        
+        // create lifetime feature just like the
+        // particles themselves
+        sys.time_past = 0; // time past so far
+        sys.time_total = sys_data.lifetime_mseconds;
+        sys.time_start = performance.now();
+        sys.dead = false;
+        
+        // this queue holds all the particles in
+        // order from youngest to oldest
+        sys.queue = new Queue();
+        
+        // transformation related properties
+        sys.pos   = sys_data.position;
+        sys.rot   = sys_data.rotation * Math.PI / 180;
+        sys.scale = sys_data.scale;
+        
+        // create update function
+        // - updates all particles in the system
+        sys.update = function() {
+            
+            // check death condition
+            if (sys.dead)
+                return;
+            
+            // update pseudo timer
+            // get the amount of milliseconds that have past so far
+            sys.time_past = performance.now() - sys.time_start;
+            
+            // skip if lifetime is up
+            if (sys.time_past >= sys.time_total) {
+                sys.dead = true;
+                return;
+            }
+        
+            // update all queued particles
+            var _tmp_ptcs = sys.queue.data();
+            for (var i in _tmp_ptcs)
+                _tmp_ptcs[i].update();
+            
+            // update custom add-ons
+            sys.update_more();
+            
+            // update image/transformations
+            sys.draw();
+        }
+        
+        // create draw function
+        // - transforms/renders image of buffer
+        //   onto the main canvas
+        sys.draw = function() {
+            var ctx0 = sys.scene.context;
+            var ctx = sys.context;
+            ctx.translate(sys.pos[0], sys.pos[1]);
+            ctx.rotate(sys.rot);
+            ctx0.drawImage(sys.buffer, 0, 0, sys.scale[0], sys.scale[1]);
+            ctx.transform(1,0,0,1,0,0); // faster than save & restore
+        }
+        
+        // create update_more function
+        // - allows for custom update add-ons by user
+        sys.update_more = function() {}
+        
+        // create translation actuator
+        sys.offset_position = function(offx, offy) {
+            
+        }
+        
+        // create rotation actuator
+        sys.offset_turn = function(angle, origin) {
+            
+        }
+        
+        // create scaling actuator
+        sys.offset_scale = function(scale, origin) {
+            
+        }
+    }
+    
+    ,
+    
+    // TODO
+    specialize_particle_system : function(sys, sys_type) {
+        
+    }
+}
