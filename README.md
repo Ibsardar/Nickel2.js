@@ -1,7 +1,7 @@
 # Nickel2.js
 🔶 **Note:**
 
-*OK so this project is getting kind of out of hand... I just wanted to make a simple update that was a tad bit better than the original Nickel.js, turns out there is a ton more to game engines than I realized! I will be using Require.js to better organize everything, but I will also have a minimized version for quick use in the future.*
+*OK so this project is getting a bit out of hand... I just wanted to make a simple update that was a tad bit better than the original Nickel.js, turns out there is a ton more to game engines than I realized! I will be using Require.js to better organize everything in the future, but I will also have a minimized version for quick use in the future.*
 
 🔶
 
@@ -12,6 +12,15 @@ Currently in the making.
 Will no longer require simpleGame.js.
 
 [Check Out the Latest Developement!](http://cs.iupui.edu/~ibsardar/Nickel2/test3.html)
+
+-----
+### Updates:
+
+##### 1/16/2018:
+
+Bulk of particle system has been completed. Only a few touch-ups left. In the meantime, some fire:
+
+![F I R E !](https://github.com/Ibsardar/Nickel2.js/blob/master/screenshots/ParticleSystem%20-%20Fire.jpg?raw=true)
 
 -----
 
