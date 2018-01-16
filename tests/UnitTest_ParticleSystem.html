@@ -1,7 +1,7 @@
 <!--
-    test3.html
+    UnitTest_ParticleSystem.html
     Ibrahim Sardar
---->
+-->
 
 <!DOCTYPE HTML>
 
@@ -40,7 +40,7 @@
     // Game
     var Game = new Viewport('main');
     Game.set_bg_color('grey');
-    Game.set_size(1400,700);
+    Game.set_size(700,350);
     Game.set_fps(60);
     
     // Helper Functions
@@ -86,35 +86,150 @@
         zoom_data       : ZOOMDATA
     };
     
-    //TODO: DECIMAL SUPPORT - AT LEAST LIKE 3 DECIMALS (so round to 3 decimals)
+    //TODO: TEST IMAGE PARTICLES
     // Particles
     var PARTICLE_000 = {
-        body                            : ParticleBuilder.CODES.RECTANGLE,
-        size                            : [12,12],
-        stroke_color                    : 'RED',
-        stroke_fill                     : 'PINK',
-        stroke_width                    : 1,
-        context                         : Game.context,
-        lifetime_mseconds               : 8000,
-        start_position_vector           : [15,45],
-        scale_vector                    : [1,1],
-        scale_mult_variation_vector     : [[1,1],[1,1]],
-        rotation_degrees                : 0,     //NOT WORKING
-        rotation_variation_degrees      : [0,0], //NOT WORKING
-        velocity_vector                 : [1,0],
-        velocity_variation_vector       : [[6,-6],[4,-4]],
-        acceleration_vector             : [0,0],
-        acceleration_variation_vector   : [[0,0],[0,0]]
+        shape                               : ParticleBuilder.TYPES.ELLIPSE,
+        size                                : [4,8],
+        stroke_color                        : 'rgba(200,0,0,0.1)',
+        stroke_fill                         : 'YELLOW',
+        stroke_width                        : 3,
+        context                             : Game.context,
+        lifetime_mseconds                   : 600,
+        lifetime_variation_vector_mseconds  : [-500, 500],
+        start_position_vector               : [0,0],
+        scale_vector                        : [4,1],
+        scale_mult_variation_vector         : [[1,1],[1,1]],
+        rotation_degrees                    : 0,
+        rotation_variation_degrees_vector   : [0,0],
+        velocity_vector                     : /*[0,0],*/[0,-3],
+        velocity_variation_vector           : [[-3,3],[0,0]],
+        acceleration_vector                 : [0,0],
+        acceleration_variation_vector       : /*[[0,0], [0,0]]*/[[-0.1,0.1],[-.1, 0]]
+    }
+    var PARTICLE_001 = {
+        shape                               : ParticleBuilder.TYPES.ELLIPSE,
+        size                                : [4,8],
+        stroke_color                        : 'RED',
+        stroke_fill                         : 'BLUE',
+        stroke_width                        : 3,
+        context                             : Game.context,
+        lifetime_mseconds                   : 600,
+        lifetime_variation_vector_mseconds  : [-500, 500],
+        start_position_vector               : [0,0],
+        scale_vector                        : [5,5],
+        scale_mult_variation_vector         : [[1,1],[1,1]],
+        rotation_degrees                    : 0,
+        rotation_variation_degrees_vector   : [0,0],
+        velocity_vector                     : /*[0,0],*/[0,-0.01],
+        velocity_variation_vector           : [[0,0],[0,0]],
+        acceleration_vector                 : [0,0],
+        acceleration_variation_vector       : [[0,0], [0,0]]//[[-0.1,0.1],[-.1, 0]]
+    }
+
+    // TODO: MAKE SURE VELOCITY IS INITIALIZED WHEN ACCELERATION DATA EXISTS IN PARTICLE DATA BUT VELOCITY DATA DOESN'T
+    // TODO: ADD LOCK VARIATIONS FEATURES (SAME VARIATION ON BOTH X AND Y AXIS)
+    // TODO: TEST WITH IMAGES
+    // this particle has all features
+    var PARTICLE_002 = {
+
+        // general
+        context                             : Game.context,
+        shape                               : ParticleBuilder.TYPES.RECTANGLE,
+        enable_translation                  : true,
+        enable_rotation                     : true,
+        enable_scaling                      : true,
+        enable_transparency                 : true,
+        lifetime                            : 1500,
+        lifetime_variation                  : [0,0],
+        size                                : [8, 8],
+
+        // start
+        start_position                      : [0,0],
+        start_position_variation            : [[-5,5],[-5,5]],
+        start_position_var_lock_axis        : false,
+
+        start_rotation                      : 45,
+        start_rotation_variation            : [0,0],
+
+        start_scale                         : [1,1],
+        start_scale_variation               : [[1,1],[1,1]],
+        start_scale_var_lock_axis           : false,
+
+        start_opacity                       : 1,
+        start_opacity_variation             : [0,0],
+
+        // velocity
+        velocity                            : [0,0],
+        velocity_variation                  : [[-2,2],[-2,0]],
+        velocity_var_lock_axis              : false,
+
+        angular_velocity                    : 5,
+        angular_velocity_variation          : [0,0],
+
+        scale_velocity                      : [1.01,1.01],
+        scale_velocity_variation            : [[1,1],[1,1]],
+        scale_velocity_var_lock_axis        : false,
+
+        opacity_velocity                    : -0.005,
+        opacity_velocity_variation          : [-0.003,0.003],
+
+        // acceleration
+        acceleration                        : [0,0],
+        acceleration_variation              : [[-0.08,0.08],[-0.075,-0.01]],
+        acceleration_var_lock_axis          : false,
+
+        angular_acceleration                : 0,
+        angular_acceleration_variation      : [0,0],
+
+        scale_acceleration                  : [1,1],
+        scale_acceleration_variation        : [[1,1],[1,1]],
+        scale_acceleration_var_lock_axis    : false,
+
+        opacity_acceleration                : 0,
+        opacity_acceleration_variation      : [0,0],
+
+        // draw - start
+        fill_color                          : [255,255,255,1],
+        fill_color_variation                : [[0,0],[0,0],[0,0],[0,0]],
+        fill_color_var_lock_axis            : false,
+
+        //stroke_color                        : [255,255,255,1],
+        //stroke_color_variation              : [[0,0],[0,0],[0,0],[0,0]],
+        //stroke_color_var_lock_axis          : false,
+
+        //stroke_width                        : 3,
+        //stroke_width_variation              : [-1,5],
+        
+        // draw - velocity
+        fill_velocity                       : [-0.05,-0.2,-1,0],
+        fill_velocity_variation             : [[0,0],[0,0],[0,0],[0,0]],
+        fill_velocity_var_lock_axis         : false,
+
+        //color_velocity                      : [0,0,0,0],
+        //color_velocity_variation            : [[0,0],[0,0],[0,0],[0,0]],
+        //color_velocity_var_lock_axis        : false,
+
+        // draw - acceleration
+        fill_acceleration                   : [-0.05,-0.2,-1,0],
+        fill_acceleration_variation         : [[0,0],[0,0],[0,0],[0,0]],
+        fill_acceleration_var_lock_axis     : false,
+
+        //color_acceleration                  : [0,0,0,0],
+        //color_acceleration_variation        : [[0,0],[0,0],[0,0],[0,0]],
+        //color_acceleration_var_lock_axis    : false
     }
     
     // Particle Systems
     var PSDATA = {
-        particle_data       : PARTICLE_000,
-        scene               : Game,
-        lifetime_mseconds   : 15000,
-        position            : [300, 150],
-        rotation            : 0,
-        scale               : 1
+        particle_data           : PARTICLE_002,
+        scene                   : Game,
+        lifetime_mseconds       : 60000,
+        position                : [350,225],
+        rotation                : 0,
+        scale                   : [1,1],
+        create_amount           : 7,
+        create_period_mseconds  : 1
     }
     
     //
@@ -126,15 +241,12 @@
     
     // TODO: FIX - DOES NOT WORK
     // Particle System
-    /*var PS = new ParticleSystem(PSDATA);
-    for (var i=0; i<100; i++) {
-        var particle = new Particle(PS.particle_data);
-        PS.queue.in(particle);
+    var PS = new ParticleSystem(PSDATA);
+    PS.update_more = function() {
+        // simple mapping of canvas point to a buffer point
+        PS.particle_data.start_position = [PS.scene.mouse_x - PS.pos[0],
+                                           PS.scene.mouse_y - PS.pos[1]];
     }
-    //*/
-    
-    // Particle
-    var particle_01 = new Particle(PARTICLE_000);
     //*/
     
     //
@@ -154,8 +266,8 @@
         World.update();
         
         // update particle system (just testing/messing around)
-        //PS.update();
-        particle_01.update();
+        PS.update();
+        //particle_01.update();
     }
     
     //
