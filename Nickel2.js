@@ -2784,8 +2784,7 @@ var ParticleBuilder = {
     // creates functions and puts'em into the system's feature list
     // note: rounds to 6 decimal places
     create_features : function(ptc, system, data) {
-    
-        // helper functions:
+
         var _round_vec_2 = function(vec_2){
             return [Nickel.UTILITY.round(vec_2[0], 6),
                     Nickel.UTILITY.round(vec_2[1], 6)];
@@ -2807,6 +2806,13 @@ var ParticleBuilder = {
                     Nickel.UTILITY.round(rgba[2][1], 6)],
                     [Nickel.UTILITY.round(rgba[3][0], 6),
                     Nickel.UTILITY.round(rgba[3][1], 6)]];
+        }
+
+        var _round_polar = function(polar){
+            return [Nickel.UTILITY.round(polar[0], 6),
+                    Nickel.UTILITY.round(polar[1], 6),
+                    Nickel.UTILITY.round(polar[2], 6),
+                    Nickel.UTILITY.round(polar[3], 6)];
         }
 
         var _rand_num = function(vec_2){
@@ -2836,22 +2842,50 @@ var ParticleBuilder = {
                 data.start_rotation_variation[1] * Math.PI / 180
             ]
 
-        if (data.angular_velocity != null)
-            data.angular_velocity *= Math.PI / 180;
-
-        if (data.angular_velocity_variation)
-            data.angular_velocity_variation = [
-                data.angular_velocity_variation[0] * Math.PI / 180,
-                data.angular_velocity_variation[1] * Math.PI / 180
+        if (data.start_position_polar_randomness)
+            data.start_position_polar_randomness = [
+                data.start_position_polar_randomness[0],
+                data.start_position_polar_randomness[1],
+                data.start_position_polar_randomness[2] * Math.PI / -180,
+                data.start_position_polar_randomness[3] * Math.PI / -180
             ]
 
-        if (data.angular_acceleration != null)
-            data.angular_acceleration *= Math.PI / 180;
+        if (data.rotational_velocity != null)
+            data.rotational_velocity *= Math.PI / 180;
 
-        if (data.angular_acceleration_variation)
-            data.angular_acceleration_variation = [
-                data.angular_acceleration_variation[0] * Math.PI / 180,
-                data.angular_acceleration_variation[1] * Math.PI / 180
+        if (data.rotational_velocity_start_var)
+            data.rotational_velocity_start_var = [
+                data.rotational_velocity_start_var[0] * Math.PI / 180,
+                data.rotational_velocity_start_var[1] * Math.PI / 180
+            ]
+
+        if (data.rotational_velocity_variation)
+            data.rotational_velocity_variation = [
+                data.rotational_velocity_variation[0] * Math.PI / 180,
+                data.rotational_velocity_variation[1] * Math.PI / 180
+            ]
+
+        if (data.rotational_acceleration != null)
+            data.rotational_acceleration *= Math.PI / 180;
+
+        if (data.rotational_acceleration_start_var)
+            data.rotational_acceleration_start_var = [
+                data.rotational_acceleration_start_var[0] * Math.PI / 180,
+                data.rotational_acceleration_start_var[1] * Math.PI / 180
+            ]
+
+        if (data.rotational_acceleration_variation)
+            data.rotational_acceleration_variation = [
+                data.rotational_acceleration_variation[0] * Math.PI / 180,
+                data.rotational_acceleration_variation[1] * Math.PI / 180
+            ]
+
+        if (data.acceleration_polar_randomness)
+            data.acceleration_polar_randomness = [
+                data.acceleration_polar_randomness[0],
+                data.acceleration_polar_randomness[1],
+                data.acceleration_polar_randomness[2] * Math.PI / -180,
+                data.acceleration_polar_randomness[3] * Math.PI / -180
             ]
     
         // init and move features:
@@ -2906,10 +2940,33 @@ var ParticleBuilder = {
         
         // start pos variation
         if (data.start_position_variation) {
-            var posv = _round_matrix_2x2(data.start_position_variation);
+            // note: lock axis will read posv from [v0,v1]
+            if (data.start_position_var_lock_axis) {
+                var posv = _round_vec_2(data.start_position_variation);
+                system.add_init_feature(function(particle) {
+                    var rnd = _rand_num(posv);
+                    particle.pos[0] += rnd;
+                    particle.pos[1] += rnd;
+                });
+                
+            // note: no lock axis will read posv from [[x0,x1],[y0,y1]]
+            } else {
+                var posv = _round_matrix_2x2(data.start_position_variation);
+                system.add_init_feature(function(particle) {
+                    particle.pos[0] += _rand_num(posv[0]);
+                    particle.pos[1] += _rand_num(posv[1]);
+                });
+            }
+        }
+
+        // start position random polar offset
+        if (data.start_position_polar_randomness) {
+            var pospol = _round_polar(data.start_position_polar_randomness);
             system.add_init_feature(function(particle) {
-                particle.pos[0] += _rand_num(posv[0]);
-                particle.pos[1] += _rand_num(posv[1]);
+                var rnd_r = _rand_num([pospol[0], pospol[1]]);
+                var rnd_t = _rand_num([pospol[2], pospol[3]]);
+                particle.pos[0] += rnd_r * Math.cos(rnd_t);
+                particle.pos[1] += rnd_r * Math.sin(rnd_t);
             });
         }
         
@@ -2944,11 +3001,21 @@ var ParticleBuilder = {
         
         // start scale variation
         if (data.start_scale_variation) {
-            var scalev = _round_matrix_2x2(data.start_scale_variation);
-            system.add_init_feature(function(particle) {
-                particle.scale[0] *= _rand_num(scalev[0]);
-                particle.scale[1] *= _rand_num(scalev[1]);
-            });
+            if (data.start_scale_var_lock_axis) {
+                var scalev = _round_vec_2(data.start_scale_variation);
+                system.add_init_feature(function(particle) {
+                    var rnd = _rand_num(scalev);
+                    particle.scale[0] *= rnd;
+                    particle.scale[1] *= rnd;
+                });
+                
+            } else {
+                var scalev = _round_matrix_2x2(data.start_scale_variation);
+                system.add_init_feature(function(particle) {
+                    particle.scale[0] *= _rand_num(scalev[0]);
+                    particle.scale[1] *= _rand_num(scalev[1]);
+                });
+            }
         }
         
         // start opacity
@@ -2968,6 +3035,15 @@ var ParticleBuilder = {
         //
         // Changing Dynamic
         //
+
+        // forces (move)
+        if (data.enable_forces)
+            system.add_move_feature(function(particle) {
+                for (var i in system.forces) {
+                    particle.vel[0] += system.forces[i][0];
+                    particle.vel[1] += system.forces[i][1];
+                }
+            });
         
         // acceleration (init)
         if (data.acceleration)
@@ -2975,41 +3051,121 @@ var ParticleBuilder = {
                 particle.acc = [data.acceleration[0],
                                 data.acceleration[1]];
             });
+        else if (enable_forces)
+            system.add_init_feature(function(particle) {
+                particle.acc = [0,0];
+            });
+        
+        // acceleration start variation
+        if (data.acceleration_start_var) {
+            if (data.acceleration_var_lock_axis) {
+                var accsv = _round_vec_2(data.acceleration_start_var);
+                system.add_init_feature(function(particle) {
+                    var rnd = _rand_num(accsv);
+                    particle.acc[0] += rnd;
+                    particle.acc[1] += rnd;
+                });
+                
+            } else {
+                var accsv = _round_matrix_2x2(data.acceleration_start_var);
+                system.add_init_feature(function(particle) {
+                    particle.acc[0] += _rand_num(accsv[0]);
+                    particle.acc[1] += _rand_num(accsv[1]);
+                });
+            }
+        }
         
         // acceleration variation
         if (data.acceleration_variation) {
-            var accv = _round_matrix_2x2(data.acceleration_variation);
-            system.add_move_feature(function(particle) {
-                particle.vel[0] += _rand_num(accv[0]);
-                particle.vel[1] += _rand_num(accv[1]);
-            });
+            if (data.acceleration_var_lock_axis) {
+                var accv = _round_vec_2(data.acceleration_variation);
+                system.add_move_feature(function(particle) {
+                    var rnd = _rand_num(accv);
+                    particle.vel[0] += rnd;
+                    particle.vel[1] += rnd;
+                });
+                
+            } else {
+                var accv = _round_matrix_2x2(data.acceleration_variation);
+                system.add_move_feature(function(particle) {
+                    particle.vel[0] += _rand_num(accv[0]);
+                    particle.vel[1] += _rand_num(accv[1]);
+                });
+            }
         }
         
         // acceleration (move)
-        if (data.acceleration)
+        if (data.acceleration || data.enable_forces)
             system.add_move_feature(function(particle) {
                 particle.vel[0] += particle.acc[0];
                 particle.vel[1] += particle.acc[1];
             });
+
+        // acceleration random polar offset
+        if (data.acceleration_polar_randomness) {
+            var accpol = _round_polar(data.acceleration_polar_randomness);
+            system.add_move_feature(function(particle) {
+                var rnd_r = _rand_num([accpol[0], accpol[1]]);
+                var rnd_t = _rand_num([accpol[2], accpol[3]]);
+                particle.vel[0] += rnd_r * Math.cos(rnd_t);
+                particle.vel[1] += rnd_r * Math.sin(rnd_t);
+            });
+        }
         
-        // angular acceleration (init)
-        if (data.angular_acceleration != null)
+        // rotational acceleration (init)
+        if (data.rotational_acceleration != null)
             system.add_init_feature(function(particle) {
-                particle.angacc = data.angular_acceleration;
+                particle.angacc = data.rotational_acceleration;
             });
         
-        // angular acceleration variation
-        if (data.angular_acceleration_variation) {
-            var angaccv = _round_vec_2(data.angular_acceleration_variation);
+        // rotational acceleration start variation
+        if (data.rotational_acceleration_start_var) {
+            var angaccsv = _round_vec_2(data.rotational_acceleration_start_var);
+            system.add_init_feature(function(particle) {
+                particle.angacc += _rand_num(angaccsv);
+            });
+        }
+        
+        // rotational acceleration variation
+        if (data.rotational_acceleration_variation) {
+            var angaccv = _round_vec_2(data.rotational_acceleration_variation);
             system.add_move_feature(function(particle) {
                 particle.angvel += _rand_num(angaccv);
             });
         }
         
-        // angular acceleration (move)
-        if (data.angular_acceleration != null)
+        // rotational acceleration (move)
+        if (data.rotational_acceleration != null)
             system.add_move_feature(function(particle) {
                 particle.angvel += particle.angacc;
+            });
+
+        // directional speed diff (init)
+        if (data.directional_speed_diff != null)
+            system.add_init_feature(function(particle) {
+                particle.diracc = data.directional_speed_diff;
+            });
+        
+        // directional speed diff start variation
+        if (data.directional_speed_diff_start_var) {
+            var diraccsv = _round_vec_2(data.directional_speed_diff_start_var);
+            system.add_init_feature(function(particle) {
+                particle.diracc += _rand_num(diraccsv);
+            });
+        }
+        
+        // directional speed diff variation
+        if (data.directional_speed_diff_variation) {
+            var diraccv = _round_vec_2(data.directional_speed_diff_variation);
+            system.add_move_feature(function(particle) {
+                particle.dirvel += _rand_num(diraccv);
+            });
+        }
+        
+        // directional speed diff (move)
+        if (data.directional_speed_diff != null)
+            system.add_move_feature(function(particle) {
+                particle.dirvel += particle.diracc;
             });
         
         // scale acceleration (init)
@@ -3019,13 +3175,42 @@ var ParticleBuilder = {
                                      data.scale_acceleration[1]];
             });
         
+        // scale acceleration start variation
+        if (data.scale_acceleration_start_var) {
+            if (data.scale_acceleration_var_lock_axis) {
+                var scaleaccsv = _round_vec_2(data.scale_acceleration_start_var);
+                system.add_init_feature(function(particle) {
+                    var rnd = _rand_num(scaleaccsv);
+                    particle.scaleacc[0] *= rnd;
+                    particle.scaleacc[1] *= rnd;
+                });
+                
+            } else {
+                var scaleaccsv = _round_matrix_2x2(data.scale_acceleration_start_var);
+                system.add_init_feature(function(particle) {
+                    particle.scaleacc[0] *= _rand_num(scaleaccsv[0]);
+                    particle.scaleacc[1] *= _rand_num(scaleaccsv[1]);
+                });
+            }
+        }
+        
         // scale acceleration variation
         if (data.scale_acceleration_variation) {
-            var scaleaccv = _round_matrix_2x2(data.scale_acceleration_variation);
-            system.add_move_feature(function(particle) {
-                particle.scalevel[0] *= _rand_num(scaleaccv[0]);
-                particle.scalevel[1] *= _rand_num(scaleaccv[1]);
-            });
+            if (data.scale_acceleration_var_lock_axis) {
+                var scaleaccv = _round_vec_2(data.scale_acceleration_variation);
+                system.add_move_feature(function(particle) {
+                    var rnd = _rand_num(scaleaccv);
+                    particle.scalevel[0] *= rnd;
+                    particle.scalevel[1] *= rnd;
+                });
+                
+            } else {
+                var scaleaccv = _round_matrix_2x2(data.scale_acceleration_variation);
+                system.add_move_feature(function(particle) {
+                    particle.scalevel[0] *= _rand_num(scaleaccv[0]);
+                    particle.scalevel[1] *= _rand_num(scaleaccv[1]);
+                });
+            }
         }
         
         // scale acceleration (move)
@@ -3040,6 +3225,14 @@ var ParticleBuilder = {
             system.add_init_feature(function(particle) {
                 particle.opacc = data.opacity_acceleration;
             });
+        
+        // opacity acceleration start variation
+        if (data.opacity_acceleration_var) {
+            var opaccsv = _round_vec_2(data.opacity_acceleration_var);
+            system.add_init_feature(function(particle) {
+                particle.opacc += _rand_num(opaccsv);
+            });
+        }
         
         // opacity acceleration variation
         if (data.opacity_acceleration_variation) {
@@ -3065,41 +3258,128 @@ var ParticleBuilder = {
                 particle.vel = [data.velocity[0],
                                 data.velocity[1]];
             });
+        else if (data.acceleration || data.enable_forces)
+            system.add_init_feature(function(particle) {
+                particle.vel = [0,0];
+            });
+        
+        // velocity start variation
+        if (data.velocity_start_var) {
+            if (data.velocity_var_lock_axis) {
+                var velsv = _round_vec_2(data.velocity_start_var);
+                system.add_init_feature(function(particle) {
+                    var rnd = _rand_num(velsv);
+                    particle.vel[0] += rnd;
+                    particle.vel[1] += rnd;
+                });
+                
+            } else {
+                var velsv = _round_matrix_2x2(data.velocity_start_var);
+                system.add_init_feature(function(particle) {
+                    particle.vel[0] += _rand_num(velsv[0]);
+                    particle.vel[1] += _rand_num(velsv[1]);
+                });
+            }
+        }
         
         // velocity variation
         if (data.velocity_variation) {
-            var velv = _round_matrix_2x2(data.velocity_variation);
-            system.add_move_feature(function(particle) {
-                particle.pos[0] += _rand_num(velv[0]);
-                particle.pos[1] += _rand_num(velv[1]);
-            });
+            if (data.velocity_var_lock_axis) {
+                var velv = _round_vec_2(data.velocity_variation);
+                system.add_move_feature(function(particle) {
+                    var rnd = _rand_num(velv);
+                    particle.pos[0] += rnd;
+                    particle.pos[1] += rnd;
+                });
+                
+            } else {
+                var velv = _round_matrix_2x2(data.velocity_variation);
+                system.add_move_feature(function(particle) {
+                    particle.pos[0] += _rand_num(velv[0]);
+                    particle.pos[1] += _rand_num(velv[1]);
+                });
+            }
         }
 
         // velocity (move)
-        if (data.velocity)
+        if (data.velocity || data.acceleration || data.enable_forces)
             system.add_move_feature(function(particle) {
                 particle.pos[0] += particle.vel[0];
                 particle.pos[1] += particle.vel[1];
             });
 
-        // angular velocity (init)
-        if (data.angular_velocity != null)
+        // velocity random polar offset
+        if (data.velocity_polar_randomness) {
+            var velpol = _round_polar(data.velocity_polar_randomness);
+            system.add_move_feature(function(particle) {
+                var rnd_r = _rand_num([velpol[0], velpol[1]]);
+                var rnd_t = _rand_num([velpol[2], velpol[3]]);
+                particle.pos[0] += rnd_r * Math.cos(rnd_t);
+                particle.pos[1] += rnd_r * Math.sin(rnd_t);
+            });
+        }
+
+        // rotational velocity (init)
+        if (data.rotational_velocity != null)
             system.add_init_feature(function(particle) {
-                particle.angvel = data.angular_velocity;
+                particle.angvel = data.rotational_velocity;
             });
         
-        // angular velocity variation
-        if (data.angular_velocity_variation) {
-            var angvelv = _round_vec_2(data.angular_velocity_variation);
+        // rotational velocity start variation
+        if (data.rotational_velocity_start_var) {
+            var angvelsv = _round_vec_2(data.rotational_velocity_start_var);
+            system.add_init_feature(function(particle) {
+                particle.angvel += _rand_num(angvelsv);
+            });
+        }
+        
+        // rotational velocity variation
+        if (data.rotational_velocity_variation) {
+            var angvelv = _round_vec_2(data.rotational_velocity_variation);
             system.add_move_feature(function(particle) {
                 particle.rot += _rand_num(angvelv);
             });
         }
         
-        // angular velocity (move)
-        if (data.angular_velocity != null)
+        // rotational velocity (move)
+        if (data.rotational_velocity != null)
             system.add_move_feature(function(particle) {
                 particle.rot += particle.angvel;
+            });
+
+        // directional speed (init)
+        if (data.directional_speed != null)
+            system.add_init_feature(function(particle) {
+                particle.dirvel = data.directional_speed;
+            });
+        else if (data.directional_speed_diff != null)
+            system.add_init_feature(function(particle) {
+                particle.dirvel = 0;
+            });
+        
+        // directional speed start variation
+        if (data.directional_speed_start_var) {
+            var dirvelsv = _round_vec_2(data.directional_speed_start_var);
+            system.add_init_feature(function(particle) {
+                particle.dirvel += _rand_num(dirvelsv);
+            });
+        }
+        
+        // directional speed variation
+        if (data.directional_speed_variation) {
+            var dirvelv = _round_vec_2(data.directional_speed_variation);
+            system.add_move_feature(function(particle) {
+                var rnd = _rand_num(dirvelv);
+                particle.pos[0] += rnd * Math.cos(particle.rot);
+                particle.pos[1] += rnd * Math.sin(particle.rot);
+            });
+        }
+        
+        // directional speed (move)
+        if (data.directional_speed != null || data.directional_speed_diff)
+            system.add_move_feature(function(particle) {
+                particle.pos[0] += particle.dirvel * Math.cos(particle.rot);
+                particle.pos[1] += particle.dirvel * Math.sin(particle.rot);
             });
         
         // scale velocity (init)
@@ -3108,18 +3388,50 @@ var ParticleBuilder = {
                 particle.scalevel = [data.scale_velocity[0],
                                      data.scale_velocity[1]];
             });
+        else if (data.scale_acceleration)
+            system.add_init_feature(function(particle) {
+                particle.scalevel = [1,1];
+            });
+
+        // scale velocity start variation
+        if (data.scale_velocity_start_var) {
+            if (data.scale_velocity_var_lock_axis) {
+                var scalevelsv = _round_vec_2(data.scale_velocity_start_var);
+                system.add_init_feature(function(particle) {
+                    var rnd = _rand_num(scalevelsv);
+                    particle.scalevel[0] *= rnd;
+                    particle.scalevel[1] *= rnd;
+                });
+            } else {
+                var scalevelv = _round_matrix_2x2(data.scale_velocity_start_var);
+                system.add_init_feature(function(particle) {
+                    particle.scalevel[0] *= _rand_num(scalevelv[0]);
+                    particle.scalevel[1] *= _rand_num(scalevelv[1]);
+                });
+            }
+        }
         
         // scale velocity variation
         if (data.scale_velocity_variation) {
-            var scalevelv = _round_matrix_2x2(data.scale_velocity_variation);
-            system.add_move_feature(function(particle) {
-                particle.scale[0] *= _rand_num(scalevelv[0]);
-                particle.scale[1] *= _rand_num(scalevelv[1]);
-            });
+            if (data.scale_velocity_var_lock_axis) {
+                var scalevelv = _round_vec_2(data.scale_velocity_variation);
+                system.add_move_feature(function(particle) {
+                    var rnd = _rand_num(scalevelv);
+                    particle.scale[0] *= rnd;
+                    particle.scale[1] *= rnd;
+                });
+                
+            } else {
+                var scalevelv = _round_matrix_2x2(data.scale_velocity_variation);
+                system.add_move_feature(function(particle) {
+                    particle.scale[0] *= _rand_num(scalevelv[0]);
+                    particle.scale[1] *= _rand_num(scalevelv[1]);
+                });
+            }
         }
         
         // scale velocity (move)
-        if (data.scale_velocity)
+        if (data.scale_velocity ||  data.scale_acceleration)
             system.add_move_feature(function(particle) {
                 particle.scale[0] *= particle.scalevel[0];
                 particle.scale[1] *= particle.scalevel[1];
@@ -3130,6 +3442,18 @@ var ParticleBuilder = {
             system.add_init_feature(function(particle) {
                 particle.opvel = data.opacity_velocity;
             });
+        else if (data.opacity_acceleration != null)
+            system.add_init_feature(function(particle) {
+                particle.opvel = 1;
+            });
+
+        // opacity velocity start variation
+        if (data.opacity_velocity_start_var) {
+            var opvelsv = _round_vec_2(data.opacity_velocity_start_var);
+            system.add_init_feature(function(particle) {
+                particle.opvel += _rand_num(opvelsv);
+            });
+        }
         
         // opacity velocity variation
         if (data.opacity_velocity_variation) {
@@ -3140,7 +3464,7 @@ var ParticleBuilder = {
         }
         
         // opacity velocity (move)
-        if (data.opacity_velocity != null)
+        if (data.opacity_velocity != null || data.opacity_acceleration != null)
             system.add_move_feature(function(particle) {
                 particle.op += particle.opvel;
             });
@@ -3299,6 +3623,10 @@ var ParticleBuilder = {
                                      data.fill_color[2],
                                      data.fill_color[3]];
                 });
+            else if (data.fill_velocity || data.fill_acceleration)
+                system.add_init_feature(function(particle) {
+                    particle.fill = [0,0,0,1];
+                });
 
             // fill color variation
             if (data.fill_color_variation) {
@@ -3348,6 +3676,10 @@ var ParticleBuilder = {
                                         data.fill_velocity[2],
                                         data.fill_velocity[3]];
                 });
+            else if (data.fill_acceleration)
+                system.add_init_feature(function(particle) {
+                    particle.fillvel = [0,0,0,0];
+                });
 
             // fill velocity variation
             if (data.fill_velocity_variation) {
@@ -3361,7 +3693,7 @@ var ParticleBuilder = {
             }
 
             // fill velocity (move)
-            if (data.fill_velocity)
+            if (data.fill_velocity || data.fill_acceleration)
                 system.add_move_feature(function(particle) {
                     particle.fill[0] += particle.fillvel[0];
                     particle.fill[1] += particle.fillvel[1];
@@ -3380,6 +3712,10 @@ var ParticleBuilder = {
                                       data.stroke_color[1],
                                       data.stroke_color[2],
                                       data.stroke_color[3]];
+                });
+            else if (data.color_velocity || data.color_acceleration)
+                system.add_init_feature(function(particle) {
+                    particle.color = [0,0,0,1];
                 });
 
             // stroke color variation
@@ -3430,6 +3766,10 @@ var ParticleBuilder = {
                                          data.color_velocity[2],
                                          data.color_velocity[3]];
                 });
+            else if (data.color_acceleration)
+                system.add_init_feature(function(particle) {
+                    particle.colorvel = [0,0,0,0];
+                });
 
             // color velocity variation
             if (data.color_velocity_variation) {
@@ -3443,7 +3783,7 @@ var ParticleBuilder = {
             }
             
             // color velocity (move)
-            if (data.color_velocity)
+            if (data.color_velocity || data.color_acceleration)
                 system.add_move_feature(function(particle) {
                     particle.color[0] += particle.colorvel[0];
                     particle.color[1] += particle.colorvel[1];
@@ -3538,6 +3878,13 @@ var ParticleSystemBuilder = {
         // usual stuff
         sys.id = Nickel.UTILITY.assign_id();
         sys.type = 'ParticleSystem';
+        sys.visible = true;
+        sys.forces = [];
+
+        // usual funcs
+        sys.show = function() {sys.visible = true;}
+        sys.hide = function() {sys.visible = false;}
+        sys.add_force = function(f,lbl) {sys.forces[lbl] = f;}
 
         // create
         switch (data.type) {
@@ -3611,6 +3958,24 @@ var ParticleSystemBuilder = {
         sys.amount = data.create_amount;
         sys.last_created = sys.time_start - sys.period;
 
+        // (*optional) variation and max of period
+        if (data.create_period_var)
+            sys.period_variation = [Math.round(data.create_period_var[0]),
+                                    Math.round(data.create_period_var[1])];
+        if (data.create_period_bounds)
+            sys.period_bounds = data.create_period_bounds;
+        else
+            sys.period_bounds = [1,9999999];
+
+        // (*optional) variation and max of amount
+        if (data.create_amount_var)
+            sys.amount_variation = [Math.round(data.create_amount_var[0]),
+                                    Math.round(data.create_amount_var[1])];
+        if (data.create_amount_bounds)
+            sys.amount_bounds = data.create_amount_bounds;
+        else
+            sys.amount_bounds = [1,9999999];
+
         // common feature preservation (for efficiency)
         sys.init_features = [];
         sys.draw_features = [];
@@ -3621,7 +3986,7 @@ var ParticleSystemBuilder = {
         sys.update = function() {
              
             // check death condition
-            if (sys.dead)
+            if (sys.dead || !sys.visible)
                 return;
             
             // get current time in milliseconds
@@ -3644,6 +4009,22 @@ var ParticleSystemBuilder = {
                     var particle = new Particle(sys.particle_data, sys);
                     particle.init();
                     sys.queue.in(particle);
+                }
+
+                // random shift of period
+                if (sys.period_variation) {
+                    sys.period += Nickel.UTILITY.random_number(sys.period_variation[0],
+                                                               sys.period_variation[1]);
+                    if (sys.period <= sys.period_bounds[0]) sys.period = sys.period_bounds[0];
+                    else if (sys.period > sys.period_bounds[1]) sys.period = sys.period_bounds[1];
+                }
+    
+                // random shift of amount
+                if (sys.amount_variation) {
+                    sys.amount += Nickel.UTILITY.random_number(sys.amount_variation[0],
+                                                               sys.amount_variation[1]);
+                    if (sys.amount <= sys.amount_bounds[0]) sys.amount = sys.amount_bounds[0];
+                    else if (sys.amount > sys.amount_bounds[1]) sys.amount = sys.amount_bounds[1];
                 }
             }
             
@@ -3678,12 +4059,6 @@ var ParticleSystemBuilder = {
             var ctx0 = sys.scene.context; //original
             var ctx = sys.context; //buffer
             ctx.save();
-            /*ctx.translate(sys.pos[0], sys.pos[1]);
-            ctx.rotate(sys.rot);
-            ctx.translate(-sys.pos[0], -sys.pos[1]);*/
-            //ctx.fillStyle = 'RED';
-            //ctx.globalAlpha = 0.5;
-            //ctx.fillRect(0,0,sys.buffer.width,sys.buffer.height); //junk
             ctx0.drawImage(sys.buffer,
                            0, 0,
                            sys.buffer.width,

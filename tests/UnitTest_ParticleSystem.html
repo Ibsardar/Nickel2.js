@@ -40,7 +40,7 @@
     // Game
     var Game = new Viewport('main');
     Game.set_bg_color('grey');
-    Game.set_size(700,350);
+    Game.set_size(1400,700);
     Game.set_fps(60);
     
     // Helper Functions
@@ -130,24 +130,31 @@
     // TODO: MAKE SURE VELOCITY IS INITIALIZED WHEN ACCELERATION DATA EXISTS IN PARTICLE DATA BUT VELOCITY DATA DOESN'T
     // TODO: ADD LOCK VARIATIONS FEATURES (SAME VARIATION ON BOTH X AND Y AXIS)
     // TODO: TEST WITH IMAGES
+    // NOTE:
+    //          variation no lock: [[],[]]
+    //          variation lock: []
+    //          variation single digit no lock: r = radius for random position within circle
+    //          variation single digit lock: r = radius for random position within a random angle within circle
     // this particle has all features
     var PARTICLE_002 = {
 
         // general
         context                             : Game.context,
-        shape                               : ParticleBuilder.TYPES.RECTANGLE,
+        shape                               : ParticleBuilder.TYPES.ELLIPSE,
         enable_translation                  : true,
         enable_rotation                     : true,
         enable_scaling                      : true,
         enable_transparency                 : true,
-        lifetime                            : 1500,
-        lifetime_variation                  : [0,0],
+        enable_forces                       : true,
+        lifetime                            : 3000,
+        lifetime_variation                  : [-1500,1500],
         size                                : [8, 8],
 
         // start
         start_position                      : [0,0],
-        start_position_variation            : [[-5,5],[-5,5]],
+        start_position_variation            : [0,0],//[[-5,5],[-5,5]],
         start_position_var_lock_axis        : false,
+        start_position_polar_randomness     : [52,64,0,360], // [start radius, end radius, start angle, end angle]
 
         start_rotation                      : 45,
         start_rotation_variation            : [0,0],
@@ -161,63 +168,75 @@
 
         // velocity
         velocity                            : [0,0],
-        velocity_variation                  : [[-2,2],[-2,0]],
-        velocity_var_lock_axis              : false,
+        velocity_start_var                  : [0,0],
+        velocity_variation                  : [0,0],//[[0,0],[0,0]],//[[-2,2],[-2,2]],
+        velocity_var_lock_axis              : true,
+        velocity_polar_randomness           : [0,1,0,360],//mag start, mag end, start angle, end engle
 
-        angular_velocity                    : 5,
-        angular_velocity_variation          : [0,0],
+        rotational_velocity                 : 6,
+        rotational_velocity_start_var       : [0,0],
+        rotational_velocity_variation       : [0,0],
+        
+        directional_speed                   : 1,
+        directional_speed_start_var         : [0,0],
+        directional_speed_variation         : [0,0],
 
         scale_velocity                      : [1.01,1.01],
+        scale_velocity_start_var            : [[1,1],[1,1]],
         scale_velocity_variation            : [[1,1],[1,1]],
         scale_velocity_var_lock_axis        : false,
 
         opacity_velocity                    : -0.005,
+        opacity_velocity_start_var          : [0,0],
         opacity_velocity_variation          : [-0.003,0.003],
 
         // acceleration
         acceleration                        : [0,0],
-        acceleration_variation              : [[-0.08,0.08],[-0.075,-0.01]],
+        acceleration_start_var              : [[0,0],[0,0]],
+        acceleration_variation              : [[0,0],[0,0]],//[[-0.1,0.1],[-0.075,-0.01]],
         acceleration_var_lock_axis          : false,
+        acceleration_polar_randomness       : [0,0,0,0],//[0.01,0.02,0,90],//mag start, mag end, start angle, end engle
 
-        angular_acceleration                : 0,
-        angular_acceleration_variation      : [0,0],
+        rotational_acceleration             : 0,
+        rotational_acceleration_start_var   : [0,0],
+        rotational_acceleration_variation   : [0,0],
+        
+        directional_speed_diff               : 0,
+        directional_speed_diff_start_var     : [0,0],
+        directional_speed_diff_variation     : [0,0],
 
         scale_acceleration                  : [1,1],
+        scale_acceleration_start_var        : [[1,1],[1,1]],
         scale_acceleration_variation        : [[1,1],[1,1]],
         scale_acceleration_var_lock_axis    : false,
 
         opacity_acceleration                : 0,
+        opacity_acceleration_start_var      : [0,0],
         opacity_acceleration_variation      : [0,0],
 
         // draw - start
         fill_color                          : [255,255,255,1],
         fill_color_variation                : [[0,0],[0,0],[0,0],[0,0]],
-        fill_color_var_lock_axis            : false,
 
         //stroke_color                        : [255,255,255,1],
         //stroke_color_variation              : [[0,0],[0,0],[0,0],[0,0]],
-        //stroke_color_var_lock_axis          : false,
 
         //stroke_width                        : 3,
         //stroke_width_variation              : [-1,5],
         
         // draw - velocity
-        fill_velocity                       : [-0.05,-0.2,-1,0],
+        fill_velocity                       : [-0.2,-0.05,-1,0],
         fill_velocity_variation             : [[0,0],[0,0],[0,0],[0,0]],
-        fill_velocity_var_lock_axis         : false,
 
         //color_velocity                      : [0,0,0,0],
         //color_velocity_variation            : [[0,0],[0,0],[0,0],[0,0]],
-        //color_velocity_var_lock_axis        : false,
 
         // draw - acceleration
-        fill_acceleration                   : [-0.05,-0.2,-1,0],
+        fill_acceleration                   : [-0.2,-0.05,-1,0],
         fill_acceleration_variation         : [[0,0],[0,0],[0,0],[0,0]],
-        fill_acceleration_var_lock_axis     : false,
 
         //color_acceleration                  : [0,0,0,0],
         //color_acceleration_variation        : [[0,0],[0,0],[0,0],[0,0]],
-        //color_acceleration_var_lock_axis    : false
     }
     
     // Particle Systems
@@ -228,8 +247,12 @@
         position                : [350,225],
         rotation                : 0,
         scale                   : [1,1],
-        create_amount           : 7,
-        create_period_mseconds  : 1
+        create_amount           : 1,
+        create_amount_var       : [-3,3],
+        create_amount_bounds    : [7,11],
+        create_period_mseconds  : 1,
+        create_period_var       : [-3,3],
+        create_period_bounds    : [1,25]
     }
     
     //
@@ -241,12 +264,20 @@
     
     // TODO: FIX - DOES NOT WORK
     // Particle System
+    var the_point = Game.get_center();
     var PS = new ParticleSystem(PSDATA);
     PS.update_more = function() {
         // simple mapping of canvas point to a buffer point
         PS.particle_data.start_position = [PS.scene.mouse_x - PS.pos[0],
                                            PS.scene.mouse_y - PS.pos[1]];
     }
+
+    // add a new custom feature
+    PS.add_move_feature(function(ptc){ptc.fill[0] += 5;});
+
+    // Add Forces to Particle System
+    //PS.add_force([0,9.81/60], 'gravity'); // gravity
+
     //*/
     
     //
