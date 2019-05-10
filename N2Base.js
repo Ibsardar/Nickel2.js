@@ -187,14 +187,15 @@ var Nickel = {
         is_array : function(o) { return o instanceof Array },
         assign_id : function() { return Nickel.ID++; },
         magnitude_of_vector : function(v) { return Math.sqrt(v[0]*v[0] + v[1]*v[1]); },
-        normalize_vector : function(v) { var mag=Math.sqrt(v[0]*v[0] + v[1]*v[1]); return !mag ? false : [v[0]/mag, v[1]/mag]; },
+        normalize_vector : function(v) { var mag=Math.sqrt(v[0]*v[0] + v[1]*v[1]); return !mag ? v : [v[0]/mag, v[1]/mag]; },
         vector_product : function(v1,v2) { return [v1[0]*v2[0] + v1[0]*v2[1], v1[1]*v2[0] + v1[1]*v2[1]]; },
         cross_product : function(v1,v2) { return v1[0]*v2[1] - v1[1]*v2[0]; },
         dot_product : function(v1,v2) { return v1[0]*v2[0] + v1[1]*v2[1]; },
         add_vector : function(v1,v2) { return [v1[0]+v2[0], v1[1]+v2[1]]; },
         subtract_vector : function(v1,v2) { return [v1[0]-v2[0], v1[1]-v2[1]]; },
         trim_angle : function(angle) { return angle % 360; },
-        atan2 : function(a,b) { if (!a) a=0; if (!b) b=0; return Math.atan2(a,b); }
+        atan2 : function(a,b) { if (!a) a=0; if (!b) b=0; return Math.atan2(a,b); },
+        midpoint : function(v1,v2) { return [(v2[0]+v1[0])/2, (v2[1]+v1[1])/2]; }
     },
 
     /* Main Update Function - User Should Implement This
@@ -240,18 +241,18 @@ function __main() {
 //
 var Collision_Detector = {
     // TODO: CLEAN COMMENTS, PRINT STATEMENTS
-    
+
     _closest_pt_on_ray_to_pt : function (ray, pt) {
         //--    Helper Function: returns the closest point
         //--    on the given line segment to the given point
         //--
-        
+
         // get unit vector
         var u = ray.get_unit();
-        
+
         // get normal of unit vector
         var n = [-u[1], u[0]];
-        
+
         // dir * t + start = norm * s + pt
         // dx * t + sx = nx * s + px
         // dy * t + sy = ny * s + py
@@ -261,11 +262,11 @@ var Collision_Detector = {
         //
         // parameter of line: t (substitute s)
         var t = (n[0]*(ray.y - pt[1]) + n[1]*(pt[0] - ray.x)) / (n[1]*u[0] - u[1]*n[0]);
-        
+
         // plug t back in to obtain points
         var nearest_x = u[0] * t + ray.x;
         var nearest_y = u[1] * t + ray.y;
-        
+
         // check if point is within bounds of ray via
         // parametric equations:
         //
@@ -282,27 +283,18 @@ var Collision_Detector = {
         // within bounds
         return [nearest_x, nearest_y];
     }
-    
+
     ,
-    
+
     //TODO: FIX NaNs WHEN LINE IS VERTICAL
     _closest_pt_on_lineseg_to_pt : function (line, pt) {
         //--    Helper Function: returns the closest point
         //--    on the given line segment to the given point
         //--
-        
-        //junk
-        /*
-        if (!line.x || !pt) {
-            console.error('===');
-            console.error(line);
-            console.error(pt);
-        }
-        */
-        
+
         // find normal dir to dir of line
         var n = [-line.dy, line.dx];
-        
+
         // dir * t + start = norm * s + pt
         // dx * t + sx = nx * s + px
         // dy * t + sy = ny * s + py
@@ -312,19 +304,11 @@ var Collision_Detector = {
         //
         // parameter of line: t (substitute s)
         var t = (n[0]*(line.y - pt[1]) + n[1]*(pt[0] - line.x)) / (n[1]*line.dx - line.dy*n[0]);
-        
-        /* /junk
-        if (!t) {
-            console.error(t);
-            console.error(line);
-            console.error(pt);
-            err_fnd = true;
-        }**/
-        
+
         // plug t back in to obtain points
         var nearest_x = line.dx * t + line.x;
         var nearest_y = line.dy * t + line.y;
-        
+
         // check if point is within bounds of line via
         // parametric equations:
         //
@@ -344,9 +328,218 @@ var Collision_Detector = {
         // within bounds
         return [nearest_x, nearest_y];
     }
+
+    ,
+    
+    _intersect_pts_on_beam_vs_circle : function (beam, circle) {
+        //--    Helper Function: Accepts RayCasts or
+        //--    LineSegments. Always returns an Array
+        //--    of 3 values: (in this order)
+        //--    - bool : does the beam intersect the circle?
+        //--    - point/null : first intersection point
+        //--    - point/null : second intersection point
+        //--
+        //--    * A point will be null if that intersection
+        //--      would have happened before/after the
+        //--      limits of the given beam. *
+        //--
+        //--    * Special Case: if the beam is a LineSegment
+        //--      and it is fully inside the circle, points will
+        //--      be calculated based on if the line were to
+        //--      be extended to the edges of the circles. *
+        //--    
+        
+        // check if beam is a ray or a line segment
+        var is_ray = (beam.type == 'RayCast' ? true : false);
+        
+        // DIR = direction vector of beam (beam.get_dir())
+        var dir = beam.get_dir();
+        
+        // DISP = vector from circle center to beam start
+        var disp = Nickel.UTILITY.subtract_vector(beam.get_pos(), circle.get_center());
+        
+        // solve by plugging parametric eq P into eq of circle
+        //        P = START + DIR * t
+        //              into...
+        //        (x-h)^2 + (y-k)^2 = r^2
+        //              to get...
+        //        t*t * (DIR dot DIR) + 2t * (DISP dot DIR) + (DISP dot DISP - r*r) = 0
+        //              solving this quadratic formula, we get...
+        //        discriminant: b*b - 4ac:
+        //              a = DIR dot DIR
+        //              b = 2 * DISP dot DIR
+        //              c = DISP dot DISP - r*r
+        var a = Nickel.UTILITY.dot_product(dir, dir);
+        var b = 2 * Nickel.UTILITY.dot_product(disp, dir);
+        var c = Nickel.UTILITY.dot_product(disp, disp) - circle.radius * circle.radius;
+        var disc = b * b - 4 * a * c;
+        
+        // discriminant < 0 or a==0 ==> no intersection
+        if (disc < 0 || !a) return [false, null, null];
+        
+        // ...else intersection, so keep solving!
+        // solve: t1,t2 = (-b +/- sqrt( discriminant )) / 2a
+        // 
+        // parameters of beam: t1, t2
+        var sqrt_disc = Math.sqrt(disc);
+        var t1 = ( -1 * b - sqrt_disc ) / ( 2 * a );
+        var t2 = ( -1 * b + sqrt_disc ) / ( 2 * a );
+        
+        // To get intersection points:
+        //        plug t1 and t2 back into...
+        //              P = START + DIR * t
+        //        and solve for the P vector...
+        //              Px = STARTx + DIRx * t
+        //              Py = STARTy + DIRy * t
+        //
+        // if ray, these are the cases:
+        //        ray starts after the circle and goes away from it
+        //              t1 < 0, t2 < 0
+        //        ray starts inside and intersects once
+        //              t1 < 0, t2 >= 0
+        //        ray intersects twice
+        //              t1 >= 0, t2 >= 0
+        if (is_ray) {
+            var ints = [true, null, null];
+            if (t1 >= 0)
+                ints[0] = [beam.x + dir[0] * t1, beam.y + dir[1] * t1];
+            if (t2 >= 0)
+                ints[1] = [beam.x + dir[0] * t2, beam.y + dir[1] * t2];
+            if (ints[2])
+                return ints;
+        
+        // if line segment, these are the cases:
+        //        line starts after circle and ends away from it
+        //              t1 < 0, t2 < 0
+        //        line starts inside and intersects once
+        //              t1 < 0, 1 >= t2 >= 0
+        //        line starts inside but ends inside
+        //              t1 < 0, t2 > 1
+        //        line starts before circle and intersects twice
+        //              1 >= t1 >= 0, 1 >= t2 >= 0
+        //        line starts before circle and intersects once
+        //              1 >= t1 >= 0, t2 > 1
+        //        line starts before circle and ends before it
+        //              t1 > 1, t2 > 1
+        } else {
+            var ints = [true, null, null];
+            if (t1 >= 0 && t1 <= 1)
+                ints[1] = [beam.x + dir[0] * t1, beam.y + dir[1] * t1];
+            if (t2 >= 0 && t2 <= 1)
+                ints[2] = [beam.x + dir[0] * t2, beam.y + dir[1] * t2];
+            if (ints[1] || ints[2])
+                return ints;
+        
+            // if no intersection but line is fully inside the circle,
+            // return no intersection but return points if line were
+            // to be extended to edges of circle
+            if (t1 < 0 && t2 > 1)
+                return [false,
+                        [beam.x + dir[0] * t1, beam.y + dir[1] * t1],
+                        [beam.x + dir[0] * t2, beam.y + dir[1] * t2]];
+        }
+        
+        // if beam is fully outside of the circle, return no
+        // intersection, and no intersection points
+        return [false, null, null];
+    }
     
     ,
     
+    _pt_on_circumference : function (circle, pt, dir_vec=null, mag_of_dir_vec=null) {
+        //--    Helper Function: gets the point that
+        //--    is along the circle's circumference
+        //--    that is on the line that also intersects
+        //--    the circle center and the given point.
+        //--
+        //--    * dir_vec is the direction vector (of any magnitude)
+        //--      from the circle's center to the given point *
+        //--
+        //--    * mag_of_dir_vec is the distance between the
+        //--      circle center to the given point *
+        //--
+        //--    * If point is at center, returns false *
+        //--
+        
+        var ctr = circle.get_center();
+        var dir = dir_vec ? dir_vec : Nickel.UTILITY.subtract_vector(pt, ctr);
+        var mag = mag_of_dir_vec ? mag_of_dir_vec : Nickel.UTILITY.magnitude_of_vector(dir);
+        if (!mag) return false;
+        var radius_vec = [circle.radius * dir[0] / mag,
+                          circle.radius * dir[1] / mag];
+        return Nickel.UTILITY.add_vector(ctr, radius_vec);
+    }
+    
+    ,
+    
+    _pt_on_circumference2 : function (ctr, r, pt, dir_vec=null, mag_of_dir_vec=null) {
+        //--    Helper Function: gets the point that
+        //--    is along the circle's circumference
+        //--    that is on the line that also intersects
+        //--    the circle center and the given point.
+        //--
+        //--    *** same as 1st version except takes in center and
+        //--        radius of a circle instead of a SimpleCircle ***
+        //--
+        //--    * dir_vec is the direction vector (of any magnitude)
+        //--      from the circle's center to the given point *
+        //--
+        //--    * mag_of_dir_vec is the distance between the
+        //--      circle center to the given point *
+        //--
+        //--    * If point is at center, returns false *
+        //--
+        
+        var dir = dir_vec ? dir_vec : Nickel.UTILITY.subtract_vector(pt, ctr);
+        var mag = mag_of_dir_vec ? mag_of_dir_vec : Nickel.UTILITY.magnitude_of_vector(dir);
+        if (!mag) return false;
+        var radius_vec = [r * dir[0] / mag,
+                          r * dir[1] / mag];
+        return Nickel.UTILITY.add_vector(ctr, radius_vec);
+    }
+    
+    ,
+    
+    _pt_orientation_from_line : function (line, pt) {
+        //--    Returns the magnitude a point is
+        //--    from the line.
+        //--
+        //--    + number : one side of the line
+        //--    - number : other side of the line
+        //--    0 number : on the line (intersecting)
+        //--
+        
+        // Formula:
+        //   start A, end B, point P, magnitude d:
+        //      d = (Px-Ax) * (By-Ay) - (Py-Ay) * (Bx-Ax)
+        return (pt[0]-line.x) * (line.endy-line.y) -
+               (pt[1]-line.y) * (line.endx-line.x);
+    }
+    
+    ,
+    
+    _pt_orientation_from_ray : function (ray, pt) {
+        //--    Returns the magnitude a point is
+        //--    from the ray.
+        //--
+        //--    + number : one side of the ray
+        //--    - number : other side of the ray
+        //--    0 number : on the ray (intersecting)
+        //--
+        //--    * slower than line version *
+        //--
+        
+        // Formula:
+        //   start A, end A*N, point P, magnitude d:
+        //      d = (Px-Ax) * (Uy-Ay) - (Py-Ay) * (Ux-Ax)
+        //      (where U is the unit vector of ray)
+        var unit = ray.get_unit();
+        return (pt[0]-ray.x) * (unit[1]-ray.y) -
+               (pt[1]-ray.y) * (unit[0]-ray.x);
+    }
+    
+    ,
+
     collides_poly_poly  : function (me, you, resolve_me=false, resolve_you=false,
                                     my_heaviness=1, your_heaviness=1,
                                     my_velocity=null, your_velocity=null) {
@@ -358,7 +551,7 @@ var Collision_Detector = {
         //--    is desired, return value will be a pair
         //--    of push vectors for both polys.
         //--
-        
+
         // begin by temporarily shifting us by our velocities
         // (function makes this easier to use later)
         var velocity_shift = function(dir=1) {
@@ -368,7 +561,7 @@ var Collision_Detector = {
                 you.shift_pos(your_velocity[0] * dir, your_velocity[1] * dir);
         }
         velocity_shift();
-        
+
         // begin by temporarily rotating us by our angles
         // (function makes this easier to use later)
         /*var angle_rotation = function(dir=1) {
@@ -379,62 +572,62 @@ var Collision_Detector = {
                 you.shift_pos(your_velocity[0] * dir, your_velocity[1] * dir);
         }
         angle_rotation();*/
-        
+
         // this is for finding the minimum interval
         // distance along some normal in the case
         // of collision resolution:
         var min_interval = 99999999;
-        
+
         // this is for finding the the axis in which
         // the minimum interval distance is found in
         // the case of collision resolution:
         var min_interval_axis = [0,0];
-        
+
         // this is for the list of normal angles
         var norms = new Map();
-        
+
         // (append only half of my normal angles if I'm
         //  equiangular and have even amount of vertices)
         var len = me.vertices.length;
         if (me.equiangular && !(me.vertices.length % 2))
             len /= 2;
-        
+
         // append my normal angles to list
         for (var i=0, j=1; i<len; i++, j++) {
-            
+
             // adjust next vertex indicator
             if (j >= me.vertices.length)
                 j = 0;
-            
+
             // calculate radian angle from vertex i to j
             var diff = Nickel.UTILITY.subtract_vector(me.vertices[i],me.vertices[j]);
             var theta = Nickel.UTILITY.atan2(diff[0], -diff[1]);
-            
+
             // add normal angle
             norms.set(theta, null);
         }
-        
+
         // (append only half of your normal angles if you're
         //  equiangular and have even amount of vertices)
         len = you.vertices.length;
         if (you.equiangular && !(you.vertices.length % 2))
             len /= 2;
-        
+
         // append ur normal angles to list
         for (var i=0, j=1; i<len; i++, j++) {
-            
+
             // adjust next vertex indicator
             if (j >= you.vertices.length)
                 j = 0;
-            
+
             // calculate radian angle from vertex i to j
             var diff = Nickel.UTILITY.subtract_vector(you.vertices[i],you.vertices[j]);
             var theta = Nickel.UTILITY.atan2(diff[0], -diff[1]);
-            
+
             // add normal angle
             norms.set(theta, null);
         }
-        
+
         // for each axis along a normal
         for (var n of norms.keys()) {
 
@@ -444,19 +637,19 @@ var Collision_Detector = {
             // this is for the list of components (magnitude of projection)
             var my_comps = [];
             var ur_comps = [];
-            
+
             // get my components
             for (var j in me.vertices) {
-                
+
                 // get component (scalar)
                 // formula: comp b onto a = a dot b / mag(a)
                 // simplified formula: comp b onto a = a dot b / 1(unit vec)
                 my_comps.push(Nickel.UTILITY.dot_product(me.vertices[j], unit_normal_vec));
             }
-            
+
             // get ur components
             for (var j in you.vertices) {
-                
+
                 // get component (scalar)
                 // formula: comp b onto a = a dot b / mag(a)
                 // simplified formula: comp b onto a = a dot b / 1(unit vec)
@@ -466,33 +659,33 @@ var Collision_Detector = {
             // get max/min of components for each polygon
             var my_extreme = [ Math.min.apply(null,my_comps), Math.max.apply(null,my_comps) ];
             var ur_extreme = [ Math.min.apply(null,ur_comps), Math.max.apply(null,ur_comps) ];
-            
+
             // check collision
             if (my_extreme[1] < ur_extreme[0] ||
                 my_extreme[0] > ur_extreme[1]) {
-            
+
                 // shift back
                 velocity_shift(-1);
 
                 // gap found
                 return false;
             }
-            
+
             // COLLISION RESOLUTION
             if (resolve_me || resolve_you) {
-                
+
                 // get distance of collision interval on this axis
                 var this_interval = Math.abs(my_extreme[0] - ur_extreme[1]);
                 if (my_extreme[0] < ur_extreme[0]) {
                     this_interval = Math.abs(ur_extreme[0] - my_extreme[1]);
                 }
-                
+
                 // record smallest interval yet
                 if (this_interval < min_interval) {
                     min_interval = this_interval;
                     min_interval_axis[0] = unit_normal_vec[0];
                     min_interval_axis[1] = unit_normal_vec[1];
-                    
+
                     // flip direction if general direction
                     // is other way from poly's center:
                     var center_diff = Nickel.UTILITY.subtract_vector(me.get_center(), you.get_center());
@@ -503,39 +696,39 @@ var Collision_Detector = {
                 }
             }
         }
-        
+
         // COLLISION RESOLUTION
         if (resolve_me || resolve_you) {
-            
+
             // The minimum translation vector from you to me;
             // used to push polygons appart.
             var min_translation_vec = [min_interval_axis[0]*min_interval,
                                        min_interval_axis[1]*min_interval];
-            
+
             // shift back
             velocity_shift(-1);
-            
+
             // resolve me
             if (resolve_me && !resolve_you) {
                 me.shift_pos(min_translation_vec[0], min_translation_vec[1]);
-                
+
                 // return a pair of push vectors for me and you
                 return [min_translation_vec, [0,0]];
 
             // resolve you
             } else if (!resolve_me && resolve_you) {
                 you.shift_pos(min_translation_vec[0] * -1, min_translation_vec[1] * -1);
-                
+
                 // return a pair of push vectors for me and you
                 return [[0,0],min_translation_vec];
 
             // resolve both partially
             } else if (resolve_me && resolve_you) {
-                
+
                 // calculate heavyness percentage
                 my_heaviness = my_heaviness / (my_heaviness + your_heaviness);
                 your_heaviness = 1 - my_heaviness;
-                
+
                 // calculate how much me and you should be pushed away
                 // (so smaller vector means heavier polygon and vice versa)
                 var my_resolve   = [min_translation_vec[0] * your_heaviness,
@@ -546,21 +739,21 @@ var Collision_Detector = {
                 // push both of us
                 me.shift_pos(my_resolve[0], my_resolve[1]);
                 you.shift_pos(your_resolve[0], your_resolve[1]);
-                
+
                 // return a pair of push vectors for me and you
                 return [my_resolve, your_resolve];
             }
         }
-            
+
         // shift back
         velocity_shift(-1);
 
         // collision is certain (worst case time complexity)
         return true;
     }
-    
+
     ,
-    
+
     //TODO: OPTIMIZE
     collides_poly_circle : function (me, you, resolve_me=false, resolve_you=false,
                                      my_heaviness=1, your_heaviness=1,
@@ -569,13 +762,13 @@ var Collision_Detector = {
         //--    point distance to circle center, then use a raycast to check
         //--    if circle is wholly consumed by polygon (center consumed for resolution).
         //--
-        
+
         //junk
-        if (isNaN(me.x))
+        /*if (isNaN(me.x))
             console.error('AAAH! (0)');
         if (isNaN(you.cx))
-            console.error('AAAH! (0.5)');
-        
+            console.error('AAAH! (0.5)');*/
+
         // begin by temporarily shifting us by our velocities
         // (function makes this easier to use later)
         var velocity_shift = function(dir=1) {
@@ -585,57 +778,53 @@ var Collision_Detector = {
                 you.shift_pos(your_velocity[0] * dir, your_velocity[1] * dir);
         }
         velocity_shift();
-        
+
         // push vector from circle's center to mine
         var min_translation_vec = null;
-        
+
         // min distance from circle to poly
         var min_distance = 999999;
-        
+
         // closest point on polygon edges to circle's center
         var closest = null;
-        
+
         // is circle's center within the poly?
         var within = Collision_Detector.collides_poly_point(me, you.get_center());
-        
+
         // if no resolution, check if center is within
         if (within && !resolve_me && !resolve_you) {
             velocity_shift(-1);
             return true;
         }
-        
-        //junk
-        var tmp_d = 123;
-        var tmp_o = 456;
-        
+
         // check every edge for the closest point to the
         // circle's center until a point collides
         var edge = null;
         for (var i=0, j=1; i<me.vertices.length; i++, j++) {
             if (j>=me.vertices.length)
                 j = 0;
-            
+
             // get closest point and other related information
             edge = new LineSegment(me.vertices[i], me.vertices[j]);
             var info = Collision_Detector.collides_circle_line(you, edge, true);
-            
+
             // COLLISION RESOLUTION
             if (resolve_me || resolve_you) {
                 if (info[2] < min_distance) {
-                    
+
                     // record minimum distance to circle's center
                     min_distance = info[2];
-                    
+
                     // record closest point
                     closest = info[1];
-                    
+
                     // if collision
                     if (info[0] && !within) {
-                            
+
                         // direction vector from you to me
                         var dir = Nickel.UTILITY.normalize_vector(
                                         Nickel.UTILITY.subtract_vector(closest, you.get_center()));
-                        
+
                         // default if normalization not possible (probably zero-vector)
                         if (!dir)
                             var dir = [1,0];
@@ -643,10 +832,6 @@ var Collision_Detector = {
                         // distance of circle's overlap over poly
                         var overlap_dist = you.radius - min_distance;
 
-                        //junk
-                        tmp_d = dir;
-                        tmp_o = overlap_dist;
-                        
                         // push vector from you to me
                         min_translation_vec = [dir[0] * overlap_dist, dir[1] * overlap_dist];
                     }
@@ -656,11 +841,11 @@ var Collision_Detector = {
                 return true;
             }
         }
-        
+
         // if circle center is within, we must create the
         // push vector a little bit differently:
         if (within) {
-            
+
             // direction vector from me to you
             var dir = Nickel.UTILITY.normalize_vector(
                             Nickel.UTILITY.subtract_vector(you.get_center(), closest));
@@ -671,50 +856,39 @@ var Collision_Detector = {
 
             // distance of circle's overlap over poly
             var overlap_dist = you.radius + min_distance;
-            
+
             // push vector from you to me
             min_translation_vec = [dir[0] * overlap_dist, dir[1] * overlap_dist];
         }
-        /*
-        if (err_fnd && min_translation_vec) {
-            console.log(JSON.stringify(min_translation_vec));
-            if (isNaN(min_translation_vec[0])) {
-                console.log(within);
-                console.log(JSON.stringify(tmp_d));
-                console.log(JSON.stringify(you.get_center()));
-                console.log(JSON.stringify(closest));
-                console.log("---");
-            }
-        }//*/
-        
+
         // if a resolution has been found, apply it
         // to both of us according to given parameters
         if (min_translation_vec) {
-            
+
             // shift back
             velocity_shift(-1);
-            
+
             // resolve me
             if (resolve_me && !resolve_you) {
                 me.shift_pos(min_translation_vec[0], min_translation_vec[1]);
-                
+
                 // return a pair of push vectors for me and you
                 return [min_translation_vec, [0,0]];
 
             // resolve you
             } else if (!resolve_me && resolve_you) {
                 you.shift_pos(min_translation_vec[0] * -1, min_translation_vec[1] * -1);
-                
+
                 // return a pair of push vectors for me and you
                 return [[0,0], min_translation_vec];
 
             // resolve both partially
             } else if (resolve_me && resolve_you) {
-                
+
                 // calculate heavyness percentage
                 my_heaviness = my_heaviness / (my_heaviness + your_heaviness);
                 your_heaviness = 1 - my_heaviness;
-                
+
                 // calculate how much me and you should be pushed away
                 // (so smaller vector means heavier polygon and vice versa)
                 var my_resolve   = [min_translation_vec[0] * your_heaviness,
@@ -725,55 +899,55 @@ var Collision_Detector = {
                 // push both of us
                 me.shift_pos(my_resolve[0], my_resolve[1]);
                 you.shift_pos(your_resolve[0], your_resolve[1]);
-                
+
                 // return a pair of push vectors for me and you
                 return [my_resolve,your_resolve];
             }
         }
-        
+
         // shift back
         velocity_shift(-1);
 
         // collision impossible by this point (worst case time complexity)
         return false;
     }
-    
+
     ,
-    
+
     collides_poly_line  : function (me, you) {
         //--    Polygon-line collision detection via
         //--    separating axis theorem
         //--
-        
+
         // this is for the list of normal angles
         var norms = new Map();
-        
+
         // (append only half of my normal angles if I'm
         //  equiangular and have even amount of vertices)
         var len = me.vertices.length;
         if (me.equiangular && !(me.vertices.length % 2))
             len /= 2;
-        
+
         // append my normal angles to list
         for (var i=0, j=1; i<len; i++, j++) {
-            
+
             // adjust next vertex indicator
             if (j >= me.vertices.length)
                 j = 0;
-            
+
             // calculate radian angle from vertex i to j
             var diff = Nickel.UTILITY.subtract_vector(me.vertices[i],me.vertices[j]);
             var theta = Nickel.UTILITY.atan2(diff[0], -diff[1]);
-            
+
             // add normal angle
             norms.set(theta, null);
         }
-        
+
         // append your normal angle to list
         var diff = Nickel.UTILITY.subtract_vector(you.get_pos(),you.get_end());
         var theta = Nickel.UTILITY.atan2(diff[0], -diff[1]);
         norms.set(theta, null);
-        
+
         // for each axis along a normal
         for (var n of norms.keys()) {
 
@@ -783,16 +957,16 @@ var Collision_Detector = {
             // this is for the list of components (magnitude of projection)
             var my_comps = [];
             var ur_comps = [];
-            
+
             // get my components
             for (var j in me.vertices) {
-                
+
                 // get component (scalar)
                 // formula: comp b onto a = a dot b / mag(a)
                 // simplified formula: comp b onto a = a dot b / 1(unit vec)
                 my_comps.push(Nickel.UTILITY.dot_product(me.vertices[j], unit_normal_vec));
             }
-            
+
             // get ur components (scalar)
             // formula: comp b onto a = a dot b / mag(a)
             // simplified formula: comp b onto a = a dot b / 1(unit vec)
@@ -802,7 +976,7 @@ var Collision_Detector = {
             // get max/min of components for each polygon
             var my_extreme = [ Math.min.apply(null,my_comps), Math.max.apply(null,my_comps) ];
             var ur_extreme = [ Math.min.apply(null,ur_comps), Math.max.apply(null,ur_comps) ];
-            
+
             // check collision
             if (my_extreme[1] < ur_extreme[0] ||
                 my_extreme[0] > ur_extreme[1]) {
@@ -815,14 +989,14 @@ var Collision_Detector = {
         // collision is certain (worst case time complexity)
         return true;
     }
-    
+
     ,
-    
+
     // TODO: POSSIBLY UPDATE RETURN VALUE
     collides_poly_ray   : function (me, you) {
         //--    Polygon-ray collision detection via
         //--    ray-edge collision checks
-        
+
         // loop through each edge of polygon
         var edge = null;
         for (var i=0, j=1; i<me.vertices.length; i++, j++) {
@@ -837,22 +1011,22 @@ var Collision_Detector = {
                 return info;
             }
         }
-        
+
         // no collision (worst case time complexity)
         return false;
     }
-    
+
     ,
-    
+
     // TODO: OPTIMIZE
     collides_poly_point : function (me, you) {
         //--    Polygon-point collision detection via
         //--    separating axis theorem
         //--
-        
+
         // make a ray cast pointing right (from point)
         var ray = new RayCast(you, 0);
-            
+
         // check ray collision on all edges
         var collisions = 0;
         for (var i=0, j=1; i<me.vertices.length; i++, j++) {
@@ -879,7 +1053,7 @@ var Collision_Detector = {
     }
 
     ,
-    
+
     collides_circle_circle : function (me, you, resolve_me=false, resolve_you=false,
                                        my_heaviness=1, your_heaviness=1,
                                        my_velocity=null, your_velocity=null) {
@@ -891,7 +1065,7 @@ var Collision_Detector = {
         //--    will be a pair of push vectors for both
         //--    circles.
         //--
-        
+
         // begin by temporarily shifting us by our velocities
         // (function makes this easier to use later)
         var velocity_shift = function(dir=1) {
@@ -901,10 +1075,10 @@ var Collision_Detector = {
                 you.shift_pos(your_velocity[0] * dir, your_velocity[1] * dir);
         }
         velocity_shift();
-        
+
         // get difference between centers
         var diff = [me.cx - you.cx, me.cy - you.cy];
-        
+
         // edge case:
         //   teporary solution:
         //     if there is exactly 0 difference, make a small difference to avoid NaN values for resolution
@@ -912,32 +1086,32 @@ var Collision_Detector = {
             diff[0] += 0.00001;
             me.cx += 0.00001;
         }
-        
+
         // get distance between centers
         var dist = Nickel.UTILITY.magnitude_of_vector(diff);
-        
+
         // sum of radii
         var sum = me.radius + you.radius;
-        
+
         // collision if distance between centers
         // is LESS THAN sum of radii of me and you
         if (dist < sum) {
-            
+
             //
             // Collision Resolution:
             //
             if (resolve_me || resolve_you) {
-            
+
                 // overlap distance
                 var overlap = sum - dist;
-                
+
                 // unit direction vector from you to me
                 var unit_dir_vec = Nickel.UTILITY.normalize_vector(diff);
-                        
+
                 // default if normalization not possible (probably zero-vector)
                 if (!unit_dir_vec)
                     var unit_dir_vec = [1,0];
-                
+
                 // displacement vector from you to me
                 //  > this is the vector that begins at the closest
                 //  point in the overlap to your center, and stretches
@@ -946,7 +1120,7 @@ var Collision_Detector = {
 
                 // shift back
                 velocity_shift(-1);
-                
+
                 // resolve me
                 if (resolve_me && !resolve_you) {
                     me.shift_pos(overlap_vec[0], overlap_vec[1]);
@@ -963,7 +1137,7 @@ var Collision_Detector = {
 
                 // resolve both partially
                 } else if (resolve_me && resolve_you) {
-                    
+
                     // calculate heavyness percentage
                     my_heaviness = my_heaviness / (my_heaviness + your_heaviness);
                     your_heaviness = 1 - my_heaviness;
@@ -978,103 +1152,186 @@ var Collision_Detector = {
                     // push both of us
                     me.shift_pos(my_resolve[0], my_resolve[1]);
                     you.shift_pos(your_resolve[0], your_resolve[1]);
-                    
+
                     // return a pair of push vectors for me and you
                     return [my_resolve,your_resolve];
                 }
             }
-            
+
             // shift back
             velocity_shift(-1);
-            
+
             // collision
             return true;
         }
-            
+
         // shift back
         velocity_shift(-1);
-        
+
         // no collision even if distance between centers
         // is EQUAL to sum of radii of me and you
         return false;
     }
-    
+
     ,
-    
-    collides_circle_line : function (me, you, detailed=false) {
+
+    collides_circle_line : function (me, you, detailed=false, detailed2=false) {
         //--    Circle-line collision detection.
-        //--    Detailed flag returns a pair containing
-        //--    the closest point on the line to the
-        //--    circle's center and its distance to the
-        //--    circle's center.
+        //--
+        //--    detailed=false, detailed2=false returns true/false.
+        //--    
+        //--    detailed=true, detailed2=false returns Array:
+        //--    - bool : if the line is colliding with the circle
+        //--    - pt : closest point on line to circle's center
+        //--    - number : distance from closest point to circle's center
+        //--
+        //--    detailed=false, detailed2=true returns Array:
+        //--    - bool : if the line is colliding with the circle
+        //--    - array : intersection data*
+        //--
+        //--    detailed=true, detailed2=true returns Array:
+        //--    - bool : if the line is colliding with the circle
+        //--    - pt : closest point on line to circle's center
+        //--    - number : distance from closest point to circle's center
+        //--    - array : intersection data*
+        //--    
+        //--    * intersection data array is as follows:
+        //--      - bool : does the line intersect the circle?
+        //--      - point/null : first intersection point
+        //--      - point/null : second intersection point *
         //--
         
-        // check if the closest point on the line to 
-        // the center of the circle is inside the circle:
-        var closest = Collision_Detector._closest_pt_on_lineseg_to_pt(you, me.get_center());
-        var distance = Nickel.UTILITY.magnitude_of_vector([closest[0]-me.cx, closest[1]-me.cy]);
-        if (detailed)
-            return [(distance <= me.radius), closest, distance];
-        else
-            return (distance <= me.radius);
+        if (detailed2) {
+            if (detailed) {
+                // return if the there is any intersection,
+                // as well as the points of intersection, 
+                // closest point on the line to the center of
+                // the circle, and the distance between the 
+                // closest point and the circle's center:
+                var closest = Collision_Detector._closest_pt_on_lineseg_to_pt(you, me.get_center());
+                var distance = Nickel.UTILITY.magnitude_of_vector([closest[0]-me.cx, closest[1]-me.cy]);
+                var intersection = Collision_Detector._intersect_pts_on_beam_vs_circle(you, me);
+                var collision = !!(intersection[0] || intersection[1]);
+                return [collision, closest, distance, intersection];
+                
+            } else {
+                // return if line is partially or wholly
+                // in the circle and any intersection data:
+                var intersection = Collision_Detector._intersect_pts_on_beam_vs_circle(you, me);
+                var collision = !!(intersection[0] || intersection[1]);
+                return [collision, intersection];
+            }
+            
+        } else {
+            // same as above except checking for collision by
+            // checking if the closest point is in the circle
+            var closest = Collision_Detector._closest_pt_on_lineseg_to_pt(you, me.get_center());
+            var distance = Nickel.UTILITY.magnitude_of_vector([closest[0]-me.cx, closest[1]-me.cy]);
+            var collision = (distance <= me.radius);
+            if (detailed)
+                return [collision, closest, distance];
+            else
+                return collision;
+        }
     }
-    
+
     ,
-    
-    collides_circle_ray : function (me, you, detailed=false) {
+
+    collides_circle_ray : function (me, you, detailed=false, detailed2=false) {
         //--    Circle-ray collision detection.
-        //--    Detailed flag returns a pair containing
-        //--    the closest point on the ray to the
-        //--    circle's center and its distance to the
-        //--    circle's center.
+        //--
+        //--    detailed=false, detailed2=false returns true/false.
+        //--    
+        //--    detailed=true, detailed2=false returns Array:
+        //--    - bool : if the ray is colliding with the circle
+        //--    - pt : closest point on line to circle's center
+        //--    - number : distance from closest point to circle's center
+        //--
+        //--    detailed=false, detailed2=true returns Array:
+        //--    - bool : if the ray is colliding with the circle
+        //--    - array : intersection data*
+        //--
+        //--    detailed=true, detailed2=true returns Array:
+        //--    - bool : if the ray is colliding with the circle
+        //--    - pt : closest point on ray to circle's center
+        //--    - number : distance from closest point to circle's center
+        //--    - array : intersection data*
+        //--    
+        //--    * intersection data array is as follows:
+        //--      - bool : does the ray intersect the circle?
+        //--      - point/null : first intersection point
+        //--      - point/null : second intersection point *
         //--
         
-        // check if the closest point on the line to 
-        // the center of the circle is inside the circle:
-        var closest = Collision_Detector._closest_pt_on_ray_to_pt(you, me.get_center());
-        var distance = Nickel.UTILITY.magnitude_of_vector([closest[0]-me.cx, closest[1]-me.cy]);
-        if (detailed)
-            return [(distance <= me.radius), closest, distance];
-        else
-            return (distance <= me.radius);
+        if (detailed2) {
+            if (detailed) {
+                // return if the there is any intersection,
+                // as well as the points of intersection, 
+                // closest point on the ray to the center of
+                // the circle, and the distance between the 
+                // closest point and the circle's center:
+                var closest = Collision_Detector._closest_pt_on_ray_to_pt(you, me.get_center());
+                var distance = Nickel.UTILITY.magnitude_of_vector([closest[0]-me.cx, closest[1]-me.cy]);
+                var intersection = Collision_Detector._intersect_pts_on_beam_vs_circle(you, me);
+                var collision = intersection[0];
+                return [collision, closest, distance, intersection];
+                
+            } else {
+                // return if ray is intersecting the
+                // circle and any intersection data:
+                var intersection = Collision_Detector._intersect_pts_on_beam_vs_circle(you, me);
+                var collision = intersection[0];
+                return [collision, intersection];
+            }
+            
+        } else {
+            // same as above except checking for collision by
+            // checking if the closest point is in the circle
+            var closest = Collision_Detector._closest_pt_on_ray_to_pt(you, me.get_center());
+            var distance = Nickel.UTILITY.magnitude_of_vector([closest[0]-me.cx, closest[1]-me.cy]);
+            var collision = (distance <= me.radius);
+            if (detailed)
+                return [collision, closest, distance];
+            else
+                return collision;
+        }
     }
-    
+
     ,
-    
+
     collides_circle_point : function (me, you) {
         //--    Circle-point collision detection
         //--
-        
+
         // get difference between centers
-        var diff = [me.cx - you.x, me.cy - you.y];
-        
+        var diff = [me.cx - you[0], me.cy - you[1]];
+
         // get distance between centers
         var dist = Nickel.UTILITY.magnitude_of_vector(diff);
-        
+
         // collision if distance is less than radius of me
         return dist <= me.radius ? true : false;
     }
-    
+
     ,
 
     collides_line_line  : function (me, you) {
         //--    Line-line collision detection
         //--    reference: "https://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect"
         //--
-        
+
         // my line's direction vector
         var me_dir = me.get_dir();
-        
+
         // your line's direction vector
         var you_dir = you.get_dir();
-        
+
         // ignore if lines have no size (mag(dir) is the size)
         if ((!me_dir[0] && !me_dir[1])   ||
             (!you_dir[0] && !you_dir[1])) {
-            //console.log("line-line collision warning: at least 1 vector is sizeless");
             return false;
         }
-        
+
         // cross product of the direction vectors
         // (magnitude doesn't matter)
         var me_you_dir_cross = Nickel.UTILITY.round(Nickel.UTILITY.cross_product(me_dir, you_dir), 6);
@@ -1109,7 +1366,7 @@ var Collision_Detector = {
                     //console.log("collinear & overlap");
                     return true;
                 }
-                
+
                 var t1 = 0;
                 if (you_dir[0])
                     t1 = (me.xend - you.x) / you_dir[0];
@@ -1119,7 +1376,7 @@ var Collision_Detector = {
                     //console.log("collinear & overlap");
                     return true;
                 }
-                
+
                 // ...and vice-versa:
                 var s0 = 0;
                 if (me_dir[0])
@@ -1130,7 +1387,7 @@ var Collision_Detector = {
                     //console.log("collinear & overlap");
                     return true;
                 }
-                
+
                 var s1 = 0;
                 if (me_dir[0])
                     s1 = (you.xend - me.x) / me_dir[0];
@@ -1140,11 +1397,11 @@ var Collision_Detector = {
                     //console.log("collinear & overlap");
                     return true;
                 }
-                
+
                 // collinear and disjoint
                 //console.log("collinear and disjoint");
                 return false;
-                
+
             // if not collinear
             } else {
 
@@ -1166,10 +1423,10 @@ var Collision_Detector = {
             //
             //  dir_cross cannot be zero because then it would mean they are parallel
             //
-            
+
             // cross product of direction vectors
             var dir_cross = Nickel.UTILITY.cross_product(you_dir, me_dir);
-            
+
             // cross product of <you-start> - <me-start> and <you-dir>
             var mid_cross = Nickel.UTILITY.cross_product([you.x - me.x, you.y - me.y], you_dir);
 
@@ -1185,7 +1442,7 @@ var Collision_Detector = {
             // if your line intersects my line
             if ((u >= -1 && u <= 0) &&
                 (v >= 0 && v <= 1)) {
-                
+
                 // intersection
                 //console.log("crossed (not parallel)");
                 return true;
@@ -1203,17 +1460,17 @@ var Collision_Detector = {
     collides_line_point : function (me, you) {
         //--    Line-point collision detection
         //--
-        
+
         // direction vector of line
         var me_dir = me.get_dir();
-        
+
         // direction vector of point to line start
         var pt_to_line_start = [me.x - you[0], me.y - you[1]];
-        
+
         // if cross is 0, then the 2 vectors must be parallel, and the point must be collinear
         var cross = Nickel.UTILITY.round(Nickel.UTILITY.cross_product(me_dir, pt_to_line_start), 6);
         if (cross == 0) {
-        
+
             // find where point starts relative to line segment:
             //   formula: <you-start> = <me-dir>*t + <me-start>
             //   solve:   t = (<you-start> - <me-start>) / <me-dir>
@@ -1233,19 +1490,19 @@ var Collision_Detector = {
     }
 
     ,
-    
+
     // TODO: ADD 'DETAILED' OPTION (INCLUDE POINT OF COLLISION AND OTHER RELATED INFO)
     collides_ray_line   : function (me, you) {
         //--    Ray-line collision detection
         //--    reference: "https://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect"
         //--
-        
+
         // ray's unit direction vector
         var me_dir = me.get_unit();
-        
+
         // line's direction vector
         var you_dir = you.get_dir();
-        
+
         // cross product of the direction vectors of ray and line segment
         // (magnitude doesn't matter)
         var me_you_dir_cross = Nickel.UTILITY.round(Nickel.UTILITY.cross_product(me_dir, you_dir), 6);
@@ -1272,7 +1529,7 @@ var Collision_Detector = {
                     t = (me.x - you.x) / you_dir[0];
                 else
                     t = (me.y - you.y) / you_dir[1];
-                
+
                 // Collinear and overlap if:
                 // 1)   t < 0 & pointing same directions (me_dir DOT you_dir = POSITIVE)
                 // 2)   t > 1 & pointing opposite directions (me_dir DOT you_dir = NEGATIVE)
@@ -1288,11 +1545,11 @@ var Collision_Detector = {
                         return true;
                     }
                 }
-                
+
                 // collinear and disjoint
                 //console.log("collinear and disjoint");
                 return false;
-                
+
             // if not collinear
             } else {
 
@@ -1314,10 +1571,10 @@ var Collision_Detector = {
             //
             //  dir_cross cannot be zero because then it would mean they are parallel
             //
-            
+
             // cross product of direction vectors
             var dir_cross = Nickel.UTILITY.cross_product(you_dir, me_dir);
-            
+
             // cross product of <line-start> - <ray-start> and <line-direction>
             var mid_cross = Nickel.UTILITY.cross_product([you.x - me.x, you.y - me.y], you_dir);
 
@@ -1332,7 +1589,7 @@ var Collision_Detector = {
 
             // if your line intersects my line
             if (v >= 0 && v <= 1 && u <= 0) {
-                
+
                 // intersection
                 //console.log("crossed but not parallel");
                 return true;
@@ -1344,23 +1601,23 @@ var Collision_Detector = {
             }
         }
     }
-    
+
     ,
-    
+
     collision_ray_point : function (me, you) {
         //--    Ray-point collision detection
         //--
-        
+
         // unit direction vector of ray
         var me_dir = me.get_unit();
-        
+
         // direction vector of point to ray start
         var pt_to_ray_start = [me.x - you[0], me.y - you[1]];
-        
+
         // if cross is 0, then the 2 vectors must be parallel, and the point must be collinear
         var cross = Nickel.UTILITY.round(Nickel.UTILITY.cross_product(me_dir, pt_to_ray_start), 6);
         if (cross == 0) {
-        
+
             // find where point starts relative to ray unit direction-vector:
             //   formula: <you-start> = <me-dir>*t + <me-start>
             //   solve:   t = (<you-start> - <me-start>) / <me-dir>
@@ -1378,7 +1635,7 @@ var Collision_Detector = {
         // else, point is disjoint
         return false;
     }
-    
+
     ,
 
     collides_point_point : function (me, you) {
@@ -1411,6 +1668,10 @@ function Viewport(html_canvas_element_id) {
 
 
 
+    // general
+    this.id = Nickel.UTILITY.assign_id();
+    this.type = 'Viewport';
+
     // canvas
     this.canvas = document.createElement('canvas');
     this.element = document.getElementById(html_canvas_element_id);
@@ -1424,9 +1685,9 @@ function Viewport(html_canvas_element_id) {
     this.timer_id = 0;
     this.fps      = 30;
     this.paused   = true;
-    
+
     // anti-aliasing
-    this.antialias = -1;
+    this.antialias = true;
 
     // cursor pos
     this.mouse_x = this.canvas.width/2;
@@ -1468,7 +1729,7 @@ function Viewport(html_canvas_element_id) {
 
         // view is not paused anymore
         this.paused = false;
-        
+
         // default anti-aliasing is off
         // (only do this if antialias has -1 as its value)
         if (this.antialias == -1)
@@ -1644,12 +1905,12 @@ function Viewport(html_canvas_element_id) {
 
         return [this.get_w()/2,this.get_h()/2];
     }
-    
+
     this.get_bounds = function() {
         //--    Returns an object representing the
         //--    viewport's bounds
         //--
-        
+
         return {x:0, y:0, w:this.get_w(), h:this.get_h()};
     }
 
@@ -1694,7 +1955,7 @@ function Viewport(html_canvas_element_id) {
             this.canvas.style.display = "none";
         }
     }
-    
+
     this.toggle_image_blur = function() {
         //--    enables/disables image anti-aliasing for better
         //--    performance and higher quality images
@@ -1702,11 +1963,11 @@ function Viewport(html_canvas_element_id) {
         //--    This code snippet was copied and edited from:
         //--        https://stackoverflow.com/questions/14068103/disable-antialising-when-scaling-images
         //--
-        
+
         if (this.antialias) {
             this.antialias = false;
             this.context.imageSmoothingEnabled = false;
-            $(this.element).css({ 
+            $(this.element).css({
                 "image-rendering" : "optimizeSpeed",             /* STOP SMOOTHING, GIVE ME SPEED  */
                 "image-rendering" : "-moz-crisp-edges",          /* Firefox                        */
                 "image-rendering" : "-o-crisp-edges",            /* Opera                          */
@@ -1715,25 +1976,162 @@ function Viewport(html_canvas_element_id) {
                 "image-rendering" : "optimize-contrast",         /* CSS3 Proposed                  */
                 "-ms-interpolation-mode" : "nearest-neighbor"    /* IE8+                           */
             });
-            
+
         } else {
             this.antialias = true;
             this.context.imageSmoothingEnabled = true;
-            $(this.element).css({ 
+            $(this.element).css({
                 "image-rendering" : "auto",       /* BROWSER'S DEFAULT IMAGE RENDERER */
                 "-ms-interpolation-mode" : "auto" /* IE8+                             */
             });
-        }     
+        }
     }
-    
+
     this.is_image_blur_on = function() {
         //--    Returns if anti-aliasing is on
         //--
-        
+
         return this.antialias;
     }
 
 }//end Viewport
+
+
+
+////////////////////////////////////////////
+///   SIMPLE TEXT   ////////////////////////    *** needs testing here
+////////////////////////////////////////////
+function SimpleText(scene, text, font_family='sans-serif', size=12, color='black',
+                     pos=[0,0], alignment="left", weight="normal") {
+    
+    // general
+    this.id = Nickel.UTILITY.assign_id();
+    this.type = 'SimpleText';
+    this.scene = scene;
+    this.canvas = scene.canvas;
+    this.context = this.canvas.getContext("2d");
+    
+    // text
+    this.text = text;
+    this.x = pos[0];
+    this.y = pos[1];
+    
+    // style
+    this.family = font_family;
+    this.size = size;
+    this.weight = weight;
+    this.font = weight + " " + size + "px " + font_family;
+    this.color = color;
+    this.alignment = alignment;
+    this.outline_color = "white";
+    this.outline_thickness = 0;
+
+    // other
+    this.dead = false;
+    this.visibility = true;
+
+    this.update = function() {
+        //--    Called every frame.
+        //--    Updates changing parameters.
+        //--
+
+        // skip if marked for deletion
+        if (this.dead == true) {
+            return;
+        }
+
+        // user custom update
+        this.update_more();
+
+        // render graphics
+        this.draw();
+    }
+
+    this.draw = function() {
+        //--    Called every frame. Processes graphics
+        //--    based on current parameters.
+        //--
+
+        // skip if marked for invisibility
+        if (this.visibility == false || this.dead == true) {
+            return;
+        }
+        
+        // draw
+        var ctx = this.context;
+        ctx.save();
+
+        // text properties
+        ctx.font = this.font;
+        ctx.fillStyle = this.color;
+        ctx.textAlign = this.alignment;
+        ctx.strokeStyle = this.outline_color;
+        ctx.lineWidth = this.outline_thickness;
+
+        // draw text
+        ctx.fillText(this.text, this.x, this.y);
+        if (this.outline_thickness) ctx.strokeText(this.text, this.x, this.y);
+
+        ctx.restore();
+    }
+
+    this.destroy = function() {
+        //--    Marks current instance for deletion
+        //--
+
+        this.dead = true;
+        this.visibility = false;
+    }
+
+    this.hide = function() {
+        //--    Marks current instance's visibility to hidden
+        //--
+
+        this.visibility = false;
+    }
+
+    this.show = function() {
+        //--    Marks current instance's visibility to shown
+        //--
+
+        this.visibility = true;
+    }
+
+    this.is_visible = function() {
+        //--    Returns if self is visible
+        //--
+
+        return this.visibility;
+    }
+
+    this.update_more = function() {
+        //--    Called in update. Meant to be over-ridden.
+        //--
+
+    }
+    
+    //
+    // setters
+    //
+
+    this.set_font = function(font_family=null, size=-1, weight=null) {
+        //--    Change the font family, size, or both.
+        //--
+        
+        if (font_family) this.family = font_family;
+        if (size > 0) this.size = size;
+        if (weight) this.weight = weight;
+        this.font = this.weight + " " + this.size + "px " + this.font_family;
+    }
+    
+    this.set_outline = function(color=null, thickness=-1) {
+        //--    Change the font family, size, or both.
+        //--
+        
+        if (color) this.outline_color = color;
+        if (thickness > 0) this.outline_thickness = thickness;
+    }
+}//end SimpleText
 
 
 
@@ -1762,9 +2160,10 @@ function SimplePoly(scene, vertices, is_equiangular=false, track_point=null) {
 
     // pos of each vertex
     this.vertices = vertices;
-    
+
     // pos of extra point to be tracked
     // (helps with origin related computation)
+    // (usually set to center of shape)
     this.tracker = track_point;
 
     // other
@@ -1862,25 +2261,25 @@ function SimplePoly(scene, vertices, is_equiangular=false, track_point=null) {
         //--
 
     }
-    
+
     this.get_tracker = function() {
         //--    Returns track point
         //--
-        
+
         return this.tracker;
     }
-    
+
     this.set_tracker = function(track_point) {
         //--    Sets a new track point
         //--
-        
+
         this.tracker = track_point;
     }
-    
+
     this.get_center = function() {
         //--    Returns average vertex position
         //--
-        
+
         var avg = [0,0];
         for(var i in this.vertices) {
             avg[0] += this.vertices[i][0];
@@ -1890,100 +2289,100 @@ function SimplePoly(scene, vertices, is_equiangular=false, track_point=null) {
         avg[1] /= this.vertices.length;
         return avg;
     }
-    
+
     this.set_center = function(new_center) {
         //--    Centers self onto a position (expensive)
         //--
-        
+
         var center = this.get_center();
         this.shift_pos(new_center[0]-center[0], new_center[1]-center[1]);
     }
-    
+
     this.shift_pos = function(shiftx, shifty) {
         //--    Shifts all vertices in the x and y dircections
         //--
-        
+
         for (var i in this.vertices) {
             this.vertices[i][0] += shiftx;
             this.vertices[i][1] += shifty;
         }
-        
+
         this.x = this.vertices[0][0];
         this.y = this.vertices[0][1];
-        
+
         if (this.tracker) {
             this.tracker[0] += shiftx;
             this.tracker[1] += shifty;
         }
     }
-    
+
     // TODO: TEST
     this.set_pos = function(point) {
         //--    Translates self where 1st vertex
         //--    is at the given point
         //--
-        
+
         var diff = [point[0] - this.x, point[1] - this.y];
-        
+
         for (var i in this.vertices) {
             this.vertices[i][0] += diff[0];
             this.vertices[i][1] += diff[1];
         }
-        
+
         this.x = point[0];
         this.y = point[1];
-        
+
         if (this.tracker) {
             this.tracker[0] += diff[0];
             this.tracker[1] += diff[1];
         }
     }
-    
+
     this.scale_around = function(scale, point) {
         //--    Scales x,y position of vertices from/to a point
         //--
-        
+
         this.scale_around2(scale, scale, point);
     }
-    
+
     this.scale_around2 = function(scalex, scaley, point) {
         //--    Scales x,y position of vertices from/to a point
         //--
-        
+
         for (var i in this.vertices) {
             this.vertices[i][0] = scalex * (this.vertices[i][0] - point[0]) + point[0];
             this.vertices[i][1] = scaley * (this.vertices[i][1] - point[1]) + point[1];
         }
-        
+
         this.x = this.vertices[0][0];
         this.y = this.vertices[0][1];
-        
+
         if (this.tracker) {
             this.tracker[0] = scalex * (this.tracker[0] - point[0]) + point[0];
             this.tracker[1] = scaley * (this.tracker[1] - point[1]) + point[1];
         }
     }
-    
+
     this.rotate_around = function(degrees, point) {
         //--    Applies a rotation transformation to all
         //--    vertices of the polygon
         //--
-        
+
         var radians = degrees*Math.PI/180*-1;
-        
+
         for (i in this.vertices) {
-            
+
             var tmpx = this.vertices[i][0] - point[0];
             var tmpy = this.vertices[i][1] - point[1];
             this.vertices[i][0] = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
             this.vertices[i][1] = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
         }
-        
+
         this.x = this.vertices[0][0];
         this.y = this.vertices[0][1];
-        
+
         if (this.tracker) {
-            
+
             var tmpx = this.tracker[0] - point[0];
             var tmpy = this.tracker[1] - point[1];
             this.tracker[0] = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
@@ -1991,28 +2390,51 @@ function SimplePoly(scene, vertices, is_equiangular=false, track_point=null) {
         }
     }
     
+    this.copy_base = function() {
+        //--    Copies self using basic properties
+        //--
+        
+        var verts = [];
+        for (var i in this.vertices) {
+            verts.push([
+                this.vertices[i][0],
+                this.vertices[i][1]
+            ]);
+        }
+        
+        var new_tracker = [this.tracker[0], this.tracker[1]];
+        var new_poly = new SimplePoly(this.scene,verts,this.equiangular,new_tracker);
+        new_poly.stroke_width = this.stroke_width;
+        new_poly.stroke_dash_length = this.stroke_dash_length;
+        new_poly.stroke_gap_length = this.stroke_gap_length;
+        new_poly.stroke_fill = this.stroke_fill;
+        new_poly.stroke_color = this.stroke_color;
+        new_poly.update_more = this.update_more;
+        return new_poly;
+    }
+
     //
     // proxy functions:
     //
-    
+
     this.offset_position = function(offx, offy) {
         //--    shift_pos proxy
         //--
-        
+
         this.shift_pos(offx, offy);
     }
-    
+
     this.offset_turn = function(angle, point) {
         //--    rotate_around proxy
         //--
-        
+
         this.rotate_around(angle, point);
     }
-    
+
     this.offset_scale = function(scale, point) {
         //--    scale_around proxy
         //--
-        
+
         this.scale_around(scale, point);
     }
 }//end SimplePoly
@@ -2045,7 +2467,7 @@ function SimpleEllipse(scene, radius_h, radius_v) {
     // pos (initially hide the ellipse)
     this.cx = -radius_h;
     this.cy = -radius_v;
-    
+
     // rot (always in radians)
     this.rot = 0;
 
@@ -2094,7 +2516,7 @@ function SimpleEllipse(scene, radius_h, radius_v) {
         ctx.setLineDash([this.stroke_dash_length, this.stroke_gap_length]);
         ctx.fillStyle = this.stroke_fill;
         ctx.strokeStyle = this.stroke_color;
-        
+
         // draw ellipse
         ctx.beginPath();
         // (params: cx,cy,rad_h,rad_v,rot,strt_angle,end_angle,anticlockwise)
@@ -2140,101 +2562,101 @@ function SimpleEllipse(scene, radius_h, radius_v) {
         //--
 
     }
-    
+
     this.set_angle = function(degrees) {
         //--    Sets the rotation angle from degrees
         //--
-        
+
         this.rot = degrees / 180 * Math.PI;
     }
-    
+
     this.get_center = function() {
         //--    Returns center of ellipse
         //--
-        
+
         return [this.cx, this.cy];
     }
-    
+
     this.set_center = function(new_center) {
         //--    Centers self onto a position
         //--
-        
+
         this.cx = new_center[0];
         this.cy = new_center[1];
     }
-    
+
     this.shift_pos = function(shiftx, shifty) {
         //--    Shifts center position
         //--
-        
+
         this.cx += shiftx;
         this.cy += shifty;
     }
-    
+
     this.set_pos = function(point) {
         //--    Translates self where center point
         //--    is at the given point (proxy to 'set_center')
         //--
-        
+
         this.cx = point[0];
         this.cy = point[1];
     }
-    
+
     this.scale_around = function(scale, point) {
         //--    Scales x,y center position and h,v radius
         //--    of self from/to a point
         //--
-        
+
         this.scale_around2(scale, scale, scale, scale, point);
     }
-    
+
     this.scale_around2 = function(scalex, scaley, scalerh, scalerv, point) {
         //--    Scales x,y center position and h,v radius
         //--    of self from/to a point
         //--
-        
+
         this.cx = scalex * (this.cx - point[0]) + point[0];
         this.cy = scaley * (this.cy - point[1]) + point[1];
         this.radius_h *= scalerh;
         this.radius_v *= scalerv;
     }
-    
+
     this.rotate_around = function(degrees, point) {
         //--    Applies a rotation transformation to centerpoint
         //--
-        
+
         var radians = degrees*Math.PI/180;
-            
+
         var tmpx = this.cx - point[0];
         var tmpy = this.cy - point[1];
         this.cx = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
         this.cy = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
-        
+
         this.rot += radians;
     }
-    
+
     //
     // proxy functions:
     //
-    
+
     this.offset_position = function(offx, offy) {
         //--    shift_pos proxy
         //--
-        
+
         this.shift_pos(offx, offy);
     }
-    
+
     this.offset_turn = function(angle, point) {
         //--    rotate_around proxy
         //--
-        
+
         this.rotate_around(angle, point);
     }
-    
+
     this.offset_scale = function(scale, point) {
         //--    scale_around proxy
         //--
-        
+
         this.scale_around(scale, point);
     }
 }//end SimpleEllipse
@@ -2266,9 +2688,10 @@ function SimpleCircle(scene, radius, track_point=null) {
     // pos (initially hide the circle)
     this.cx = -radius;
     this.cy = -radius;
-    
+
     // pos of extra point to be tracked
     // (helps with origin related computation)
+    // (usually set to center of shape)
     this.tracker = track_point;
 
     // other
@@ -2362,98 +2785,98 @@ function SimpleCircle(scene, radius, track_point=null) {
         //--
 
     }
-    
+
     this.get_tracker = function() {
         //--    Returns track point
         //--
-        
+
         return this.tracker;
     }
-    
+
     this.set_tracker = function(track_point) {
         //--    Sets a new track point
         //--
-        
+
         this.tracker = track_point;
     }
-    
+
     this.get_center = function() {
         //--    Returns center of circle
         //--
-        
+
         return [this.cx, this.cy];
     }
-    
+
     this.set_center = function(new_center) {
         //--    Centers self onto a position
         //--
-        
+
         if (this.tracker) {
             this.tracker[0] += new_center[0] - this.cx;
             this.tracker[1] += new_center[1] - this.cy;
         }
-        
+
         this.cx = new_center[0];
         this.cy = new_center[1];
     }
-    
+
     this.shift_pos = function(shiftx, shifty) {
         //--    Shifts center position
         //--
-        
+
         this.cx += shiftx;
         this.cy += shifty;
-        
+
         if (this.tracker) {
             this.tracker[0] += shiftx;
             this.tracker[1] += shifty;
         }
     }
-    
+
     this.set_pos = function(point) {
         //--    Translates self where center point
         //--    is at the given point (proxy to 'set_center')
         //--
-        
+
         this.set_center(point);
     }
-    
+
     this.scale_around = function(scale, point) {
         //--    Scales x,y center position and radius
         //--    of self from/to a point
         //--
-        
+
         this.scale_around2(scale, scale, scale, point);
     }
-    
+
     this.scale_around2 = function(scalex, scaley, scaler, point) {
         //--    Scales x,y center position and radius
         //--    of self from/to a point
         //--
-        
+
         this.cx = scalex * (this.cx - point[0]) + point[0];
         this.cy = scaley * (this.cy - point[1]) + point[1];
         this.radius *= scaler;
-        
+
         if (this.tracker) {
             this.tracker[0] = scalex * (this.tracker[0] - point[0]) + point[0];
             this.tracker[1] = scaley * (this.tracker[1] - point[1]) + point[1];
         }
     }
-    
+
     this.rotate_around = function(degrees, point) {
         //--    Applies a rotation transformation to centerpoint
         //--
-        
+
         var radians = degrees*Math.PI/180*-1;
-            
+
         var tmpx = this.cx - point[0];
         var tmpy = this.cy - point[1];
         this.cx = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
         this.cy = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
-        
+
         if (this.tracker) {
-            
+
             var tmpx = this.tracker[0] - point[0];
             var tmpy = this.tracker[1] - point[1];
             this.tracker[0] = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
@@ -2461,28 +2884,44 @@ function SimpleCircle(scene, radius, track_point=null) {
         }
     }
     
+    this.copy_base = function() {
+        //--    Copies self using basic properties
+        //--
+        
+        var new_tracker = [this.tracker[0], this.tracker[1]];
+        var new_circle = new SimpleCircle(this.scene,this.radius,new_tracker);
+        new_circle.set_center([this.cx, this.cy]);
+        new_circle.stroke_width = this.stroke_width;
+        new_circle.stroke_dash_length = this.stroke_dash_length;
+        new_circle.stroke_gap_length = this.stroke_gap_length;
+        new_circle.stroke_fill = this.stroke_fill;
+        new_circle.stroke_color = this.stroke_color;
+        new_circle.update_more = this.update_more;
+        return new_circle;
+    }
+
     //
     // proxy functions:
     //
-    
+
     this.offset_position = function(offx, offy) {
         //--    shift_pos proxy
         //--
-        
+
         this.shift_pos(offx, offy);
     }
-    
+
     this.offset_turn = function(angle, point) {
         //--    rotate_around proxy
         //--
-        
+
         this.rotate_around(angle, point);
     }
-    
+
     this.offset_scale = function(scale, point) {
         //--    scale_around proxy
         //--
-        
+
         this.scale_around(scale, point);
     }
 }//end SimpleCircle
@@ -2631,13 +3070,13 @@ function SimpleLine(scene, startpoint, endpoint) {
         //--    Returns angle (in radians) from start to end
         //--
 
-        return Nickel.UTILITY.atan2(-this.dy, this.dx);
+        return Nickel.UTILITY.atan2(-this.dy, this.dx) * 180 / Math.PI;
     }
-    
+
     this.get_center = function() {
         //--    Returns midpoint of linesegment
         //--
-        
+
         return [this.x + this.dx/2, this.y + this.dy/2];
         //return [this.x+(this.xend-this.x)/2, this.y+(this.yend-this.y)/2];
     }
@@ -2674,91 +3113,91 @@ function SimpleLine(scene, startpoint, endpoint) {
         this.xend = this.x + dir[0];
         this.yend = this.y + dir[1];
     }
-    
+
     this.set_center = function(new_center) {
         //--    Centers midpoint onto a position (expensive)
         //--
-        
+
         var center = this.get_center();
         var difx = new_center[0] - center[0];
         var dify = new_center[1] - center[1];
-        
+
         this.shift_pos(difx, dify);
     }
-    
+
     this.shift_pos = function(shiftx, shifty) {
         //--    Shifts endpoints
         //--
-        
+
         this.x += shiftx;
         this.y += shifty;
         this.xend += shiftx;
         this.yend += shifty;
-        
+
         this.dx = this.xend - this.x;
         this.dy = this.yend - this.y;
     }
-    
+
     this.scale_around = function(scale, point) {
         //--    Scales self's endpoints around a point
         //--
-        
+
         this.scale_around(scale, scale, point);
     }
-    
+
     this.scale_around2 = function(scalex, scaley, point) {
         //--    Scales self's endpoints around a point
         //--
-        
+
         this.x = scalex * (this.x - point[0]) + point[0];
         this.y = scaley * (this.y - point[1]) + point[1];
         this.xend = scalex * (this.xend - point[0]) + point[0];
         this.yend = scaley * (this.yend - point[1]) + point[1];
     }
-    
+
     this.rotate_around = function(degrees, point) {
         //--    Applies a rotation transformation to both endpoints
         //--
-        
+
         var radians = degrees*Math.PI/180*-1;
         var tmpx, tmpy;
-            
+
         tmpx = this.x - point[0];
         tmpy = this.y - point[1];
         this.x = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
         this.y = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
-        
+
         tmpx = this.xend - point[0];
         tmpy = this.yend - point[1];
         this.xend = tmpx * Math.cos(radians) - tmpy * Math.sin(radians) + point[0];
         this.yend = tmpx * Math.sin(radians) + tmpy * Math.cos(radians) + point[1];
-        
+
         this.dx = this.xend - this.x;
         this.dy = this.yend - this.y;
     }
-    
+
     //
     // proxy functions:
     //
-    
+
     this.offset_position = function(offx, offy) {
         //--    shift_pos proxy
         //--
-        
+
         this.shift_pos(offx, offy);
     }
-    
+
     this.offset_turn = function(angle, point) {
         //--    rotate_around proxy
         //--
-        
+
         this.rotate_around(angle, point);
     }
-    
+
     this.offset_scale = function(scale, point) {
         //--    scale_around proxy
         //--
-        
+
         this.scale_around(scale, point);
     }
 }//end SimpleLine
@@ -2808,7 +3247,7 @@ function LineSegment(startpoint, endpoint=[0,0]) {
         //--    Returns angle from start to end
         //--
 
-        return Math.atan2(-this.dy, this.dx);
+        return Nickel.UTILITY.atan2(-this.dy, this.dx) * 180 / Math.PI;
     }
 
     this.set_dir = function(dir) {
@@ -2860,20 +3299,23 @@ function RayCast(startpoint, direction_degs=0) {
 
         return [this.x, this.y];
     }
-    
+
     this.set_angle = function(degrees) {
         //--    Sets the rotation angle from degrees
         //--
-        
+
         this.rot = degrees / 180 * Math.PI;
     }
-    
+
     this.get_unit = function() {
         //--    Returns a unit direction vector
         //--
-        
+
         return [Math.cos(this.rot), Math.sin(this.rot) * -1];
     }
+    
+    // same as get_unit
+    this.get_dir = this.get_unit;
 }//end RayCast
 
 
@@ -2905,7 +3347,7 @@ function BoundingBox(sprite) {
 
     // parent
     this.target = sprite;
-    
+
     // indicates if we have already bounded around the sprite
     this.updated = false;
 
@@ -2926,10 +3368,10 @@ function BoundingBox(sprite) {
     this.bound = function(force_bound=false) {
         //--    Bounds self around a target sprite
         //--
-        
+
         // ignore if this function if we already updated
         if (this.updated && !force_bound) return;
-        
+
         // indicate that we have bounded self
         this.updated = true;
 
@@ -2985,55 +3427,55 @@ function BoundingBox(sprite) {
 ///   COLLIDER HULL   //////////////////////
 ////////////////////////////////////////////
 function ColliderHull(sprite, approximate=true) {
-    
+
     // TODO: TEST EXTENSIVELY
     // (this, simple shapes, and some collision_detection functions)
-    
+
     // general
     this.id = Nickel.UTILITY.assign_id();
     this.type = 'ColliderHull';
-    
+
     // parent/host sprite
     this.parent = sprite;
-    
+
     // simple shape of hull
     if (approximate) {
-        
+
         // get coordinates, dimensions (relative to sprite's origin)
         var tl = this.parent.get_topleft();
         var tr = this.parent.get_topright();
         var bl = this.parent.get_bottomleft();
         var br = this.parent.get_bottomright();
-        
+
         // create rectangle matching the sprite's basic dimensions
         this.shape = new SimplePoly(this.parent.scene,
                                     [tl,tr,br,bl],
                                     true, this.parent.get_pos2());  // HERE: THE PARENT ORIGIN POINT MAY NOT BE THE TRUE ORIGIN (BIG PROBLEM EEK)
     }
-    
+
     // keep track of how much shape has rotated and scaled
     this.rotated = this.parent.get_rot();
     this.scaledx = this.parent.get_scalex();
     this.scaledy = this.parent.get_scaley();
-    
+
     // this limits the update function to be called once per frame
     this.updated = false;
-    
+
     this.update = function() {
         //--    Main update function (called every frame)
         //--
-        
+
         // indicate that the parent sprite and
         // hull are now out of sync
         this.updated = false;
     }
-    
+
     this.update_transformations = function() {
         //--    Updates the hull's shape based on its parent
         //--    sprite's position, rotation, and horizontal scale
         //--    (not called every frame)
         //--
-        
+
         // TODO: FIX ROTATION AND SCALING - THEY ARE A BIT OFF
         // only update tranformations if they have not been
         // updated this frame already: (also avoid update if
@@ -3043,13 +3485,13 @@ function ColliderHull(sprite, approximate=true) {
             var par_pos = this.parent.get_pos2();
             var hul_pos = this.shape.get_tracker();
             var diff = [par_pos[0] - hul_pos[0], par_pos[1] - hul_pos[1]];
-            
+
             // translation
             this.shape.shift_pos(diff[0], diff[1]);
-            
+
             // rotation
             this.shape.rotate_around(this.parent.get_rot() - this.rotated, par_pos);
-            
+
             // scaling
             // (circle cannot scale differently on x and y axis, but polys can)
             // (just use x-axis scale if circle hull)
@@ -3061,12 +3503,12 @@ function ColliderHull(sprite, approximate=true) {
             } else if (this.shape.type == "SimpleCircle") {
                 this.shape.scale_around(sx / this.scaledx, par_pos);
             }
-            
+
             // remember last updated values
             this.rotated = this.parent.get_rot();
             this.scaledx = sx;
             this.scaledy = sy;
-            
+
             /***   HERE: ERROR - TRACKER POINT SHOULD BE CENTER OF LOCOMOTIVES (CENTER NOT EQUAL TO TRACKER PT!!!)
             if (this.parent.type == "Locomotive" &&
                 (par_pos[0]!=this.shape.get_center()[0] || par_pos[1]!=this.shape.get_center()[1]))
@@ -3074,28 +3516,28 @@ function ColliderHull(sprite, approximate=true) {
             //**/
         }
     }
-    
+
     this.approximate_shape = function() {
         //--    Approximates a shape to bound the sprite with
         //--
-        
+
         // get coordinates, dimensions (relative to sprite's origin)
         var tl = this.parent.get_topleft();
         var tr = this.parent.get_topright();
         var bl = this.parent.get_bottomleft();
         var br = this.parent.get_bottomright();
-        
+
         // create rectangle matching the sprite's basic dimensions
         this.shape = new SimplePoly(this.parent.scene,
                                     [tl,tr,br,bl],
                                     true, this.parent.get_pos2());
     }
-    
+
     this.set_shape = function(simple_shape) {
         //--    Sets the shape of the hull
         //--    Parent's origin is default tracker if none is set
         //--
-        
+
         this.shape = simple_shape;
         if (!simple_shape.get_tracker())
             simple_shape.set_tracker(this.parent.get_pos2());
@@ -3103,149 +3545,161 @@ function ColliderHull(sprite, approximate=true) {
         this.update_transformations();
     }
     
+    this.copy_base = function(spr) {
+        //--    Creates a new copy of this hull for a 
+        //--    specific sprite
+        //--
+        
+        var new_hull = new ColliderHull(spr, false);
+        new_hull.set_shape(this.shape.copy_base());
+        new_hull.shape.set_tracker(spr.get_pos2());
+        
+        return new_hull;
+    }
+
     // TODO: OPTIMIZE
     this.detect_collision = function(obj) {
         //--    Returns if a collision was detected
         //--    with some object
         //--
-        
+
         // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
-        
+
         // first, make sure hull is up to date with parent sprite
         this.update_transformations();
-        
+
         // me = circle
         if (this.shape.type == "SimpleCircle") {
-        
+
             // you = point
             if (Nickel.UTILITY.is_array(obj)) {
-             
+
                 return Collision_Detector.collides_circle_point(this.shape, obj);
-                
+
             // you = hull
             } else if (obj.type == "ColliderHull") {
-                
+
                 // also make sure obj is up to date with its parent sprite
                 obj.update_transformations();
-                
+
                 // you = circle hull
                 if (obj.shape.type == "SimpleCircle") {
-                    
+
                     return Collision_Detector.collides_circle_circle(this.shape, obj.shape);
-                
+
                 // you = poly hull
                 } else if (obj.shape.type == "SimplePoly") {
-                
+
                     return Collision_Detector.collides_poly_circle(obj.shape, this.shape);
                 }
-                
+
             // you = poly
             } else if (obj.type == "SimplePoly") {
 
                 return Collision_Detector.collides_poly_circle(obj, this.shape);
-                
+
             // you = circle
             } else if (obj.type == "SimpleCircle") {
-                
+
                 return Collision_Detector.collides_circle_circle(obj, this.shape);
-                
+
             // you = line
             } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
-                
+
                 return Collision_Detector.collides_circle_line(this.shape, obj);
-                
+
             // you = ray
             } else if (obj.type == "RayCast") {
-                
+
                 return Collision_Detector.collides_circle_ray(this.shape, obj);
             }
-                
+
         // me = poly
         } else if (this.shape.type == "SimplePoly") {
-            
+
             // you = point
             if (Nickel.UTILITY.is_array(obj)) {
                 return Collision_Detector.collides_poly_point(this.shape, obj);
-                
+
             // you = hull
             } else if (obj.type == "ColliderHull") {
-                
+
                 // also make sure obj is up to date with its parent sprite
                 obj.update_transformations();
-                
+
                 // you = circle hull
                 if (obj.shape.type == "SimpleCircle") {
-                    
+
                     return Collision_Detector.collides_poly_circle(this.shape, obj.shape);
-                
+
                 // you = poly hull
                 } else if (obj.shape.type == "SimplePoly") {
-                
+
                     return Collision_Detector.collides_poly_poly(obj.shape, this.shape);
                 }
-                
+
             // you = poly
             } else if (obj.type == "SimplePoly") {
 
                 return Collision_Detector.collides_poly_poly(this.shape, obj);
-                
+
             // you = circle
             } else if (obj.type == "SimpleCircle") {
-                
+
                 return Collision_Detector.collides_poly_circle(this.shape, obj);
-                
+
             // you = line
             } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
-                
+
                 return Collision_Detector.collides_poly_line(this.shape, obj);
-                
+
             // you = ray
             } else if (obj.type == "RayCast") {
-                
+
                 return Collision_Detector.collides_poly_ray(this.shape, obj);
             }
         }
-        
+
         // me = unknown
         return false;
     }
-    
+
     // TODO: OPTIMIZE
     this.resolve_collision = function(obj,resolve_me=true,resolve_you=true,my_heaviness=1,
                                       ur_heaviness=1,my_velocity=null,ur_velocity=null) {
         //--    Same as detect_collision but also resolves
         //--
-        
+
         // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
         
         // first, make sure hull is up to date with parent sprite
         this.update_transformations();
-        
+
         // me = circle
         if (this.shape.type == "SimpleCircle") {
-        
+
             // you = point
             if (Nickel.UTILITY.is_array(obj)) {
-                
+
                 return Collision_Detector.collides_circle_point(this.shape, obj);
-                
+
             // you = hull
             } else if (obj.type == "ColliderHull") {
-                
+
                 // also make sure obj is up to date with its parent sprite
                 obj.update_transformations();
-                
+
                 // you = circle hull
                 if (obj.shape.type == "SimpleCircle") {
-                    
+
                     return Collision_Detector.collides_circle_circle(this.shape, obj.shape,
                                                                      resolve_me, resolve_you,
                                                                      my_heaviness, ur_heaviness,
                                                                      my_velocity, ur_velocity);
-                
+
                 // you = poly hull
                 } else if (obj.shape.type == "SimplePoly") {
-                
+
                     var res = Collision_Detector.collides_poly_circle(obj.shape, this.shape,
                                                                    resolve_you, resolve_me,
                                                                    ur_heaviness, my_heaviness,
@@ -3254,7 +3708,7 @@ function ColliderHull(sprite, approximate=true) {
                         return res;
                     return [res[1], res[0]]; // order: me, you
                 }
-                
+
             // you = poly
             } else if (obj.type == "SimplePoly") {
 
@@ -3265,56 +3719,56 @@ function ColliderHull(sprite, approximate=true) {
                 if (!res)
                     return res;
                 return [res[1], res[0]]; // order: me, you
-                
+
             // you = circle
             } else if (obj.type == "SimpleCircle") {
-                
+
                 return Collision_Detector.collides_circle_circle(this.shape, obj,
                                                                  resolve_me, resolve_you,
                                                                  my_heaviness, ur_heaviness,
                                                                  my_velocity, ur_velocity);
-                
+
             // you = line
             } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
-                
+
                 return Collision_Detector.collides_circle_line(this.shape, obj);
-                
+
             // you = ray
             } else if (obj.type == "RayCast") {
-                
+
                 return Collision_Detector.collides_circle_ray(this.shape, obj);
             }
-            
+
         // me = poly
         } else if (this.shape.type == "SimplePoly") {
-            
+
             // you = point
             if (Nickel.UTILITY.is_array(obj)) {
                 return Collision_Detector.collides_poly_point(this.shape, obj);
-                
+
             // you = hull
             } else if (obj.type == "ColliderHull") {
-                
+
                 // also make sure obj is up to date with its parent sprite
                 obj.update_transformations();
-                
+
                 // you = circle hull
                 if (obj.shape.type == "SimpleCircle") {
-                    
+
                     return Collision_Detector.collides_poly_circle(this.shape, obj.shape,
                                                                    resolve_me, resolve_you,
                                                                    my_heaviness, ur_heaviness,
                                                                    my_velocity, ur_velocity);
-                
+
                 // you = poly hull
                 } else if (obj.shape.type == "SimplePoly") {
-                
+                    
                     return Collision_Detector.collides_poly_poly(this.shape, obj.shape,
                                                                  resolve_me, resolve_you,
                                                                  my_heaviness, ur_heaviness,
                                                                  my_velocity, ur_velocity);
                 }
-                
+
             // you = poly
             } else if (obj.type == "SimplePoly") {
 
@@ -3322,28 +3776,27 @@ function ColliderHull(sprite, approximate=true) {
                                                              resolve_me, resolve_you,
                                                              my_heaviness, ur_heaviness,
                                                              my_velocity, ur_velocity);
-                
+
             // you = circle
             } else if (obj.type == "SimpleCircle") {
-                
+
                 return Collision_Detector.collides_poly_circle(this.shape, obj,
                                                                resolve_me, resolve_you,
                                                                my_heaviness, ur_heaviness,
                                                                my_velocity, ur_velocity);
-                
+
             // you = line
             } else if (obj.type == "SimpleLine" || obj.type == "LineSegment") {
-                
+
                 return Collision_Detector.collides_poly_line(this.shape, obj);
-                
+
             // you = ray
             } else if (obj.type == "RayCast") {
-                
+
                 return Collision_Detector.collides_poly_ray(this.shape, obj);
             }
-            
         }
-        
+
         // me = unknown
         return false;
     }
@@ -3383,7 +3836,7 @@ function Sprite(scene, image_data, has_bbox=true,
     if (has_bbox) {
         this.bbox = new BoundingBox(this);
     }
-    
+
     // init collision hull
     this.hull = collisiion_hull;
 
@@ -3407,6 +3860,7 @@ function Sprite(scene, image_data, has_bbox=true,
 
     // acc
     this.accel = 0;
+    this.impulse = 0;
 
     // rot
     this.dir = 0; // angle of sprite's image
@@ -3414,7 +3868,7 @@ function Sprite(scene, image_data, has_bbox=true,
     this.dr = 0;
     this.max_rot = 0;
     this.origin = [0,0]; // default topleft
-    
+
     // history
     this.curr_rot = 0; // current turn displacement
     this.last_rot = 0; // last turn displacement
@@ -3453,10 +3907,10 @@ function Sprite(scene, image_data, has_bbox=true,
 
         // re-fixate bounding box
         if (this.bbox) this.bbox.update();
-        
+
         // updates collision hull
         if (this.hull) this.hull.update();
-        
+
         // update history
         this.update_records();
 
@@ -3542,7 +3996,7 @@ function Sprite(scene, image_data, has_bbox=true,
         //   acceleration:
         //
         // linear
-        this.speed = this.speed + this.accel;
+        this.speed = this.speed + this.accel + this.impulse;
         // angular
         this.rot = this.rot + this.dr;
         this.dir = this.dir + this.dr;
@@ -3559,6 +4013,11 @@ function Sprite(scene, image_data, has_bbox=true,
         // update difference in x and y position
         this.x = this.x + this.dx + tmp_dx;
         this.y = this.y + this.dy + tmp_dy;
+        
+        // reset applied force vector and impulse
+        this.dx = 0;
+        this.dy = 0;
+        this.impulse = 0;
     }
 
     this.bound = function() {
@@ -3590,12 +4049,12 @@ function Sprite(scene, image_data, has_bbox=true,
         //--
 
     }
-    
+
     this.update_records = function() {
         //--    Updates history variables from the
         //--    last update
         //--
-        
+
         // rotation
         this.last_rot = this.curr_rot;
         this.curr_rot = this.dr;
@@ -3730,7 +4189,7 @@ function Sprite(scene, image_data, has_bbox=true,
 
         return [this.get_x(), this.get_y()];
     }
-    
+
     this.get_x2 = function() {
         //--    Returns accurate x position (left)
         //--    (includes origin offset)
@@ -4119,7 +4578,7 @@ function Sprite(scene, image_data, has_bbox=true,
     this.set_scale = function(n) {
         //--    Scale sprite by n
         //--
-        
+
         this.set_scalex(n);
         this.set_scaley(n);
     }
@@ -4127,15 +4586,15 @@ function Sprite(scene, image_data, has_bbox=true,
     this.set_scalex = function(n) {
         //--    Scale sprite's width by n
         //--
-        
+
         // get percent origin[0] within self
         // (<0 left of sprite, >1 right of sprite, else within)
         var ox_perc = this.origin[0] / this.get_w();
-        
+
         var x2 = this.get_x2();
         this.set_x(n / this.scale_x * (this.get_x() - x2) + x2);
         this.scale_x = n;
-        
+
         // restore origin[1] to new scale by maintaing the
         // same percent within the pre-scaled sprite
         this.origin[0] = ox_perc * this.get_w();
@@ -4144,15 +4603,15 @@ function Sprite(scene, image_data, has_bbox=true,
     this.set_scaley = function(n) {
         //--    Scale sprite's height by n
         //--
-        
+
         // get percent origin[1] within self
         // (<0 above sprite, >1 under sprite, else within)
         var oy_perc = this.origin[1] / this.get_h();
-        
+
         var y2 = this.get_y2();
         this.set_y(n / this.scale_y * (this.get_y() - y2) + y2);
         this.scale_y = n;
-        
+
         // restore origin[1] to new scale by maintaing the
         // same percent within the pre-scaled sprite
         this.origin[1] = oy_perc * this.get_h();
@@ -4289,6 +4748,22 @@ function Sprite(scene, image_data, has_bbox=true,
         this.speed = spd;
     }
 
+    this.set_velocity = function(v, instant=false) {
+        //--    Sets the accurate velecity vector.
+        //--    If turn_spr false, sprite will not rotate
+        //--
+
+        // radians to degs
+        var theta = Nickel.UTILITY.atan2(-1 * v[1], v[0]);
+        theta *= 180 / Math.PI;
+
+        // turn gradually or instantly
+        !instant ? this.turn(theta, false, false) : this.turn(theta, false);
+
+        // speed vector
+        this.speed = Nickel.UTILITY.magnitude_of_vector(v);
+    }
+
 
     // +++
     // +++ > acceleration-related:
@@ -4349,10 +4824,10 @@ function Sprite(scene, image_data, has_bbox=true,
     this.set_origin = function(offset) {
         //--    Set the origin of rotation (pivot)
         //--    relative to the default topleft corner.
-        //--    Also update the hull so it appears to 
+        //--    Also update the hull so it appears to
         //--    not have changed
         //--
-        
+
         if (this.hull)
             this.hull.shape.shift_pos(this.origin[0] - offset[0],
                                       this.origin[1] - offset[1]);
@@ -4364,15 +4839,15 @@ function Sprite(scene, image_data, has_bbox=true,
     this.set_origin_centered = function() {
         //--    Set the origin of rotation (pivot)
         //--    in the center of the image.
-        //--    Also update the hull so it appears to 
+        //--    Also update the hull so it appears to
         //--    not have changed
         //--
-        
+
         var old_origin = [this.origin[0], this.origin[1]];
 
         this.origin[0] = this.get_w() / 2;
         this.origin[1] = this.get_h() / 2;
-        
+
         if (this.hull)
             this.hull.shape.shift_pos(old_origin[0] - this.origin[0],
                                       old_origin[1] - this.origin[1]);
@@ -4396,11 +4871,11 @@ function Sprite(scene, image_data, has_bbox=true,
 
         this.type = type;
     }
-    
+
     this.set_hull = function(hull) {
         //--    Resets the collision hull for the sprite
         //--
-        
+
         this.hull = hull;
     }
 
@@ -4409,7 +4884,7 @@ function Sprite(scene, image_data, has_bbox=true,
     // ------- OTHER methods -------------------------------------
     // --
 
-    
+
     // TODO: OPTIMIZE
     this.colliding_with = function(target, layer_check=true) {
         //--    Returns true if target is colliding
@@ -4417,28 +4892,28 @@ function Sprite(scene, image_data, has_bbox=true,
         //--
 
         // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
-        
+
         // if sprite, check layer if specified, then check their hulls
         if (target.type == "Sprite") {
-                
+
             // no layer check
             if (!layer_check) {
-                
+
                 return this.hull.detect_collision(target.hull);
             // same layer check
             } else if (layer_check && (target.get_layer() == this.get_layer())) {
-                
+
                 return this.hull.detect_collision(target.hull);
             // different layer
             } else {
                 return false;
             }
         }
-        
+
         // target is not a sprite
         return this.hull.detect_collision(target);
     }
-    
+
     // TODO: OPTIMIZE, ADD OPTION TO USE ROTATION FOR PREDICTION <--- HERE !!!
     this.resolve_with = function(target, layer_check=true, resolve_me=true, resolve_you=true,
                                  my_heaviness=1, ur_heaviness=1,
@@ -4448,24 +4923,24 @@ function Sprite(scene, image_data, has_bbox=true,
         //--
 
         // OPTIMIZE: Use some Nickel mapping variable to make this type check efficient
-        
+
         // keeps track of shift amount of self and target, respectively
         // (ultimately also keeps track of if a collision occurred)
         var resolve = null;
-        
+
         // if sprite, check layer if specified, then check their hulls
         if (target.type == "Sprite") {
-                
+
             // no layer check
             if (!layer_check) {
-                
+
                 resolve = this.hull.resolve_collision(target.hull,
                                                    resolve_me, resolve_you,
                                                    my_heaviness, ur_heaviness,
                                                    my_velocity, ur_velocity);
             // same layer check
             } else if (layer_check && (target.get_layer() == this.get_layer())) {
-                
+
                 resolve = this.hull.resolve_collision(target.hull,
                                                    resolve_me, resolve_you,
                                                    my_heaviness, ur_heaviness,
@@ -4481,10 +4956,10 @@ function Sprite(scene, image_data, has_bbox=true,
                 target.sync_with_hull(resolve[1]);
             else
                 return false;
-            
+
         // target is not a sprite
         } else {
-        
+
             resolve = this.hull.resolve_collision(target,
                                                resolve_me, resolve_you,
                                                my_heaviness, ur_heaviness,
@@ -4500,18 +4975,36 @@ function Sprite(scene, image_data, has_bbox=true,
         } else
             return false;
     }
-    
+
     this.sync_with_hull = function(shift_vector) {
         //--    Syncs/applies hull's transformations to self.
         //--    (currently, hull can only translate as a
         //--    result of a resolution)
-        //--    
-        
+        //--
+
         // shift self
         this.offset_position(shift_vector[0], shift_vector[1]);
     }
 
-    this.copy_base = function() {
+    this.apply_force = function(force_vector) {
+        //--    Applies force vector to self, causing
+        //--    an immediate shift in that direction
+        //--
+        
+        this.dx = force_vector[0];
+        this.dy = force_vector[1];
+    }
+    
+    this.apply_impulse = function(amt) {
+        //--    Applies a momentary impulse to self,
+        //--    causing an immediate push in the direction
+        //--    self is already moving at.
+        //--
+        
+        this.impulse += amt;
+    }
+    
+    this.copy_base = function(do_update=true) {
         //--    Returns a base copy of self
         //--
 
@@ -4520,19 +5013,25 @@ function Sprite(scene, image_data, has_bbox=true,
         else
             var _img_data = {w:this.get_w_orig(), h:this.get_h_orig()};
 
-        var spr = new Sprite(this.scene, _img_data, !!this.bbox, null, !!this.hull);
+        var spr = new Sprite(this.scene, _img_data, !!this.bbox, null, false);
+
+        if (this.hull)
+            spr.set_hull(this.hull.copy_base(spr));
         
         spr.bound = this.bound;
-        
-        spr.update();
+        spr.update_more = this.update_more;
+
+        if (do_update)
+            spr.update();
+
         return spr;
     }
 
-    this.copy_frozen = function() {
+    this.copy_frozen = function(do_update=true) {
         //--    Returns a frozen copy of self
         //--
 
-        var spr = this.copy_base();
+        var spr = this.copy_base(do_update=true);
 
         // pos
         spr.x = this.x;
@@ -4554,7 +5053,9 @@ function Sprite(scene, image_data, has_bbox=true,
         spr.visibility = this.visibility;
         spr.layer = this.layer;
 
-        spr.update();
+        if (do_update)
+            spr.update();
+
         return spr;
     }
 
@@ -4647,7 +5148,7 @@ function Sprite(scene, image_data, has_bbox=true,
         //--    Offsets scale via scaling matrix calculations.
         //--    New global scale based on current global scale
         //--
-        
+
         var ox_perc = this.origin[0] / this.get_w();
         var oy_perc = this.origin[1] / this.get_h();
 
@@ -4655,7 +5156,7 @@ function Sprite(scene, image_data, has_bbox=true,
         this.set_y(scale*(this.get_y()-origin[1]) + origin[1]);
 
         this.scale_global *= scale;
-        
+
         this.origin[0] = ox_perc * this.get_w();
         this.origin[1] = oy_perc * this.get_h();
     }
@@ -4670,7 +5171,7 @@ function Sprite(scene, image_data, has_bbox=true,
         // if I don't have a bbox:
         if (!this.bbox) return;
 
-        // figure out offset angle if specified
+        // figure out offset angle (if 'angle' is not the offset)
         if (!is_offset) {
 
             // angles must be between 0 and 359 (inclusive)
@@ -4786,15 +5287,15 @@ function Sprite(scene, image_data, has_bbox=true,
         this.curr_rot += ang;
     }
 
-    
+
     // --
     // ------- POST-CREATION INIT actions ------------------------
     // --
-    
-    
+
+
     // init default hull if hull is null
     if (!this.hull && approximate) this.hull = new ColliderHull(this);
-    
+
 }//end Sprite
 
 
@@ -4816,6 +5317,10 @@ function SpriteSelector(scene) {
 
     // selector box that is used to select multiple objects on screen
     this.selector = null;
+    
+    // function that takes in a sprite and returns a priority in decreasing order
+    // default: sort by sprite layer
+    this.sort_by = function(sprite) { return sprite.get_layer(); };
 
     // Holds selection history
     // Dictionary Format:
@@ -5090,7 +5595,7 @@ function SpriteSelector(scene) {
             var heap = new Heap('max');
             for (var i in sprites) {
                 if (sprites[i].colliding_with([x,y], false)) {
-                    var sort_by = this.selector.sort_by(sprites[i]);
+                    var sort_by = this.sort_by(sprites[i]);
                     heap.in(sprites[i],sort_by);
                 }
             }
@@ -5118,6 +5623,33 @@ function SpriteSelector(scene) {
         var my = this.scene.mouse_y;
         return this.get_under_point(sprites,mx,my,sorted);
     }
+
+    this.get_under_sprite = function(sprites, spr, sorted=true) {
+        //--    Returns ordered list (first element is top) of
+        //--    sprites that are underneath the a sprite
+        //--    (ordered by collision layer)
+        //--
+
+        if (sorted) {
+            var heap = new Heap('max');
+            for (var i in sprites) {
+                if (spr.colliding_with(sprites[i], false)) {
+                    var sort_by = this.sort_by(sprites[i]);
+                    heap.in(sprites[i],sort_by);
+                }
+            }
+            return heap.sort();
+
+        } else {
+            var under = [];
+            for (var i in sprites) {
+                if (spr.colliding_with(sprites[i], false)) {
+                    under.push(sprites[i]);
+                }
+            }
+            return under;
+        }
+    }
     
     this.get_under_box = function(sprites, sorted=true) {
         //--    Returns ordered list (first element is top) of
@@ -5135,7 +5667,7 @@ function SpriteSelector(scene) {
             var heap = new Heap('max');
             for (var i in sprites) {
                 if (this.selector.colliding_with(sprites[i], false)) {
-                    var sort_by = this.selector.sort_by(sprites[i]);
+                    var sort_by = this.sort_by(sprites[i]);
                     heap.in(sprites[i],sort_by);
                 }
             }
@@ -5161,9 +5693,8 @@ function SpriteSelector(scene) {
     this.set_selector = function(sel_data) {
         //--    Sets properties of the selector box
         //--
-
+        
         this.selector = sel_data.sprite;
-        this.selector.sort_by = sel_data.sort_by;
         this.selector.border = sel_data.border_color;
         this.selector.border_str = sel_data.border_thickness;
         this.selector.cornerA = sel_data.corner_topleft;
@@ -5176,6 +5707,10 @@ function SpriteSelector(scene) {
         if (sel_data.click_type == 'middle') this.selector.starter = 1;
         if (sel_data.click_type == 'right')  this.selector.starter = 2;
         this.selector.hide();
+    }
+    
+    this.set_sort_by = function(sort_by) {
+        this.sort_by = sort_by;
     }
 }//end SpriteSelector
 
@@ -5678,7 +6213,7 @@ function QuadTreeObj(obj,overlap,bounds) {
 }//end QuadTreeObj
 
 function QuadTreeNode() {
-    
+
     // 1 parent QuadTreeNode (utilized to allow more
     // neighbors to be returned in the get function)
     this.parent = null;
@@ -5740,7 +6275,7 @@ function QuadTree(max_objs, max_depth, bounds) {
         if (!past) past = node;
         var o = new QuadTreeObj(obj, false, { x:pos[0], w:size[0],
                                               y:pos[1], h:size[1] });
-        
+
         // (can help with performance when there are lots
         //  of objects beyond entire quadtree space.)
         // before anything, exclude any outliers if desired (~10 ops)
@@ -5752,7 +6287,7 @@ function QuadTree(max_objs, max_depth, bounds) {
                 return 0;
             }
         }
-        
+
         // mimics recursion
         while (curr) {
 
@@ -5784,7 +6319,7 @@ function QuadTree(max_objs, max_depth, bounds) {
                         curr.objs.push(o);
                         o.overlapping = true;
                         return 1;
-                        
+
                     // if obj in bounds and is bounded by some next quadrant
                     default:
                         past = curr;
@@ -5798,7 +6333,7 @@ function QuadTree(max_objs, max_depth, bounds) {
                 var transfer = curr.objs;
                 curr.objs = [];
                 this.chop(curr);
-                
+
                 // redistrubute existing objects in curr node to its children
                 for (var i in transfer) {
                     var quadrant = this.quad(curr.bounds, transfer[i].bounds);
@@ -5843,34 +6378,34 @@ function QuadTree(max_objs, max_depth, bounds) {
         var otop = obj_bounds.y;
         var oright = obj_bounds.x + obj_bounds.w;
         var obottom = obj_bounds.y + obj_bounds.h;
-        
+
         // if object inside space_bounds
         if (oleft > sleft && oright < sright &&
             otop > stop && obottom < sbottom) {
-            
+
             if (oright < cx) {
-                
+
                 // if inside topleft
                 if (obottom < cy) {
                     return 0;
-                    
+
                 // if inside bottomleft
                 } else if (otop > cy) {
                     return 3;
                 }
-                
+
             } else if (oleft > cx) {
-                
+
                 // if inside topright
                 if (obottom < cy) {
                     return 1;
-                    
+
                 // if inside bottomright
                 } else if (otop > cy) {
                     return 2;
                 }
             }
-            
+
             // if code reaches here, then there
             // is some internal overlapping
             return -1;
@@ -5892,7 +6427,7 @@ function QuadTree(max_objs, max_depth, bounds) {
         var B = new QuadTreeNode();
         var C = new QuadTreeNode();
         var D = new QuadTreeNode();
-        
+
         A.parent = node;
         B.parent = node;
         C.parent = node;
@@ -5949,21 +6484,21 @@ function QuadTree(max_objs, max_depth, bounds) {
         this._get(this.root, bounds, objs);
         return objs;
     }
-    
+
     this._get_all = function(node,objs) {
         //--    recursively collects all objects starting from
         //--    a specific node in the quadtree and marks them
         //--    as 'selected' (for debugging purposes)
         //--
-        
+
         // set all objects to 'selected'
         for (var i in node.objs) {
             node.objs[i].selected = true;
         }
-        
+
         // accumulate all objs of current node into objs list
         objs.push.apply(objs, node.objs);
-        
+
         // if children, recurse using children nodes
         if (node.children.length) {
             this._get_all(node.children[0], objs);
@@ -5971,7 +6506,7 @@ function QuadTree(max_objs, max_depth, bounds) {
             this._get_all(node.children[2], objs);
             this._get_all(node.children[3], objs);
         }
-        
+
         // otherwise, we are done
         return objs;
     }
@@ -5983,10 +6518,10 @@ function QuadTree(max_objs, max_depth, bounds) {
         //--    is filled up with all the objects found and marks
         //--    them as 'selected' (for debugging purposes)
         //--
-        
+
         // first, check if this node is a leaf
         if (!node.children.length) {
-            
+
             // set all objects to 'selected'
             for (var i in node.objs) {
                 node.objs[i].selected = true;
@@ -5994,10 +6529,10 @@ function QuadTree(max_objs, max_depth, bounds) {
 
             // accumulate all objs of current node into objs list
             objs.push.apply(objs, node.objs);
-        
+
         // else, node has children
         } else {
-        
+
             // get quadrant current node fits into
             var quadrant = this.quad(node.bounds, bounds);
 
@@ -6020,7 +6555,7 @@ function QuadTree(max_objs, max_depth, bounds) {
                 this._get(node.children[quadrant], bounds, objs);
             }
         }
-        
+
         // optimized list of objs
         return objs;
     }
@@ -6042,7 +6577,7 @@ function QuadTree(max_objs, max_depth, bounds) {
         //--    - boundaries are colored BLACK.
         //--    - overlapping nodes are colored GREEN.
         //--    - selected nodes are colored ORANGE.
-        //--    - all other nodes are colored RED
+        //--    - all other nodes are colored RED.
         //--
 
         var help_me_draw = function(curr) {
